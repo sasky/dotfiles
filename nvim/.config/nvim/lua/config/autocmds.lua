@@ -6,4 +6,3 @@
 --
 -- Or remove existing autocmds by their group name (which is prefixed with `lazyvim_` for the defaults)
 -- e.g. vim.api.nvim_del_augroup_by_name("lazyvim_wrap_spell")
-vim.keymap.set("i", "jk", "<esc>:w<cr>l", { desc = "Exit insert mode and save" })
