@@ -38,3 +38,11 @@ vim.keymap.set("v", "<leader>yu", function()
   vim.fn.setreg("+", result)
   vim.notify("Copied with path: " .. relative_path, vim.log.levels.INFO)
 end, { desc = "Copy selection with relative path" })
+
+-- Reload nvim config
+vim.keymap.set("n", "<leader>R", function()
+  vim.cmd("source ~/.config/nvim/lua/config/options.lua")
+  vim.cmd("source ~/.config/nvim/lua/config/keymaps.lua")
+  vim.cmd("source ~/.config/nvim/lua/config/autocmds.lua")
+  vim.notify("Config reloaded", vim.log.levels.INFO)
+end, { desc = "Reload config" })
