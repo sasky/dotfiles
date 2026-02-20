@@ -6,6 +6,7 @@
 --
 
 vim.keymap.set("i", "jk", "<esc>:w<cr>l", { desc = "Exit insert mode and save" })
+vim.keymap.set("n", "<leader>w", ":bd<cr>l", { desc = "Close the current buffer" })
 
 -- local builtin = require("telescope.builtin")
 -- vim.keymap.set("n", "<leader>ff", builtin.oldfiles, { desc = "Telescope old files" })
@@ -14,10 +15,7 @@ function _G.set_terminal_keymaps()
   local opts = { buffer = 0 }
   vim.keymap.set("t", "<esc>", [[<C-\><C-n>]], opts)
   vim.keymap.set("t", "jk", [[<C-\><C-n>]], opts)
-  vim.keymap.set("t", "<C-h>", [[<Cmd>wincmd h<CR>]], opts)
-  vim.keymap.set("t", "<C-j>", [[<Cmd>wincmd j<CR>]], opts)
-  vim.keymap.set("t", "<C-k>", [[<Cmd>wincmd k<CR>]], opts)
-  vim.keymap.set("t", "<C-l>", [[<Cmd>wincmd l<CR>]], opts)
+  -- C-h/j/k/l handled by vim-tmux-navigator
   vim.keymap.set("t", "<C-w>", [[<C-\><C-n><C-w>]], opts)
 end
 

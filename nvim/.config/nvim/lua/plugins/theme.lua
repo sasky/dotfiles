@@ -1,1 +1,0 @@
-/home/cam/.config/omarchy/current/theme/neovim.lua
