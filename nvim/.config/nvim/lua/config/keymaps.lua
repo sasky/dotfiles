@@ -28,3 +28,13 @@ vim.keymap.del("n", "<leader>ft")
 vim.keymap.del({ "n", "t" }, "<c-/>")
 vim.keymap.del({ "n", "t" }, "<c-_>")
 vim.keymap.set("n", "<leader>ft", ":ToggleTerm<cr>", { desc = "Toggle the buitin terminal" })
+
+-- Copy selection with relative file path to clipboard
+vim.keymap.set("v", "<leader>yu", function()
+  vim.cmd('normal! "zy')
+  local selection = vim.fn.getreg("z")
+  local relative_path = vim.fn.expand("%:.")
+  local result = relative_path .. "\n" .. selection
+  vim.fn.setreg("+", result)
+  vim.notify("Copied with path: " .. relative_path, vim.log.levels.INFO)
+end, { desc = "Copy selection with relative path" })
