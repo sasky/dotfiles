@@ -39,6 +39,12 @@ vim.keymap.set("v", "<leader>yu", function()
   vim.notify("Copied with path: " .. relative_path, vim.log.levels.INFO)
 end, { desc = "Copy selection with relative path" })
 
+-- Resize splits (Alt+h/j/k/l) — seamless with tmux
+vim.keymap.set("n", "<M-h>", "<cmd>vertical resize -5<cr>", { desc = "Resize split left" })
+vim.keymap.set("n", "<M-j>", "<cmd>resize -5<cr>", { desc = "Resize split down" })
+vim.keymap.set("n", "<M-k>", "<cmd>resize +5<cr>", { desc = "Resize split up" })
+vim.keymap.set("n", "<M-l>", "<cmd>vertical resize +5<cr>", { desc = "Resize split right" })
+
 -- Reload nvim config
 vim.keymap.set("n", "<leader>R", function()
   vim.cmd("source ~/.config/nvim/lua/config/options.lua")
