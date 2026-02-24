@@ -4,3 +4,4 @@
 -- remove tabs
 -- fast way to close a buffer
 vim.opt.relativenumber = true
+vim.opt.spelloptions = "camel"
