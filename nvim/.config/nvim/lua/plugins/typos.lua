@@ -1,21 +1,17 @@
 return {
-  -- Install typos-lsp binary via Mason
+  -- Install cspell-lsp binary via Mason
   {
     "mason-org/mason.nvim",
     opts = {
-      ensure_installed = { "typos-lsp" },
+      ensure_installed = { "cspell" },
     },
   },
-  -- Configure typos-lsp via lspconfig
+  -- Configure cspell-lsp via lspconfig
   {
     "neovim/nvim-lspconfig",
     opts = {
       servers = {
-        typos_lsp = {
-          init_options = {
-            diagnosticSeverity = "Warning",
-          },
-        },
+        cspell = {},
       },
     },
   },
