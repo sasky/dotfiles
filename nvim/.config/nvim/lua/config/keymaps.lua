@@ -52,3 +52,8 @@ vim.keymap.set("n", "<leader>R", function()
   vim.cmd("source ~/.config/nvim/lua/config/autocmds.lua")
   vim.notify("Config reloaded", vim.log.levels.INFO)
 end, { desc = "Reload config" })
+
+-- Load all git hunks into quickfix for project-wide navigation (]q / [q)
+vim.keymap.set("n", "<leader>gQ", function()
+  require("gitsigns").setqflist("all", { open = true })
+end, { desc = "Git hunks → quickfix (all files)" })
