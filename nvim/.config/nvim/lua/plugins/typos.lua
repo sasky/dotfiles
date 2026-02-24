@@ -1,7 +1,7 @@
 return {
   -- Install typos-lsp binary via Mason
   {
-    "williamboman/mason.nvim",
+    "mason-org/mason.nvim",
     opts = {
       ensure_installed = { "typos-lsp" },
     },
