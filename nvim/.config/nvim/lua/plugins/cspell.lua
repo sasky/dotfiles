@@ -3,7 +3,7 @@ return {
   {
     "mason-org/mason.nvim",
     opts = {
-      ensure_installed = { "cspell" },
+      ensure_installed = { "cspell-lsp" },
     },
   },
   -- Configure cspell-lsp via lspconfig
@@ -11,7 +11,7 @@ return {
     "neovim/nvim-lspconfig",
     opts = {
       servers = {
-        cspell = {},
+        cspell_ls = {},
       },
     },
   },
