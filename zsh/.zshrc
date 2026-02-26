@@ -189,23 +189,14 @@ alias dev='~/.config/tmux/scripts/dev-session.sh'
 
 alias ansinstall='sudo apt update && sudo apt install software-properties-common && sudo add-apt-repository --yes --update ppa:ansible/ansible && sudo apt install ansible'
 
+# TODO: Replace nvm with a rust-based alternative (e.g. fnm) for faster shell startup
 export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
-# Lazy-load nvm — defers ~390ms until first use of node/npm/nvm/npx
-_load_nvm() {
-  unset -f nvm node npm npx 2>/dev/null
-  [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-  [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-}
-nvm()  { _load_nvm; nvm "$@" }
-node() { _load_nvm; node "$@" }
-npm()  { _load_nvm; npm "$@" }
-npx()  { _load_nvm; npx "$@" }
-
-# Auto-switch node version based on .nvmrc (triggers lazy-load if needed)
+# Auto-switch node version based on .nvmrc
 autoload -U add-zsh-hook
 load-nvmrc() {
-  if ! type nvm_find_nvmrc &>/dev/null; then _load_nvm; fi
   local nvmrc_path="$(nvm_find_nvmrc)"
   if [ -n "$nvmrc_path" ]; then
     local nvmrc_node_version=$(nvm version "$(cat "${nvmrc_path}")")
@@ -220,7 +211,7 @@ load-nvmrc() {
   fi
 }
 add-zsh-hook chpwd load-nvmrc
-# Don't call load-nvmrc on startup — nvm loads lazily on first node/npm use
+load-nvmrc
 
 if command -v pyenv 1>/dev/null 2>&1; then
   eval "$(pyenv init -)"
