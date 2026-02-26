@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# tmux-mem — Show memory usage per tmux session
+# Usage: tmux-mem [session-name]
+
+set -euo pipefail
+
+if ! tmux list-sessions &>/dev/null; then
+  echo "No tmux server running." >&2
+  exit 1
+fi
+
+human_size() {
+  local kb=$1
+  if (( kb >= 1048576 )); then
+    printf "%.1f GB" "$(echo "scale=1; $kb / 1048576" | bc)"
+  elif (( kb >= 1024 )); then
+    printf "%.0f MB" "$(echo "scale=0; $kb / 1024" | bc)"
+  else
+    printf "%d KB" "$kb"
+  fi
+}
+
+filter_session="${1:-}"
+
+total_all=0
+
+printf "%-20s %-8s  %s\n" "SESSION" "RSS" "PROCESSES"
+printf "%-20s %-8s  %s\n" "-------" "---" "---------"
+
+while read -r session; do
+  [[ -n "$filter_session" && "$session" != "$filter_session" ]] && continue
+
+  session_rss=0
+  procs=()
+
+  while read -r pane_pid pane_cmd; do
+    # Get shell process memory
+    shell_rss=$(ps -o rss= -p "$pane_pid" 2>/dev/null | tr -d ' ')
+    shell_rss=${shell_rss:-0}
+    session_rss=$((session_rss + shell_rss))
+
+    # Get child processes
+    for child in $(pgrep -P "$pane_pid" 2>/dev/null); do
+      child_rss=$(ps -o rss= -p "$child" 2>/dev/null | tr -d ' ')
+      child_comm=$(ps -o comm= -p "$child" 2>/dev/null | sed 's|.*/||')
+      child_rss=${child_rss:-0}
+      session_rss=$((session_rss + child_rss))
+      if (( child_rss > 1024 )); then
+        procs+=("${child_comm}($(human_size "$child_rss"))")
+      fi
+    done
+
+    # Add pane command if not just a shell
+    if [[ "$pane_cmd" != "-zsh" && "$pane_cmd" != "zsh" && "$pane_cmd" != "bash" && "$pane_cmd" != "-bash" ]]; then
+      if (( shell_rss > 1024 )); then
+        procs+=("${pane_cmd}($(human_size "$shell_rss"))")
+      fi
+    fi
+  done < <(tmux list-panes -s -t "$session" -F '#{pane_pid} #{pane_current_command}')
+
+  total_all=$((total_all + session_rss))
+  proc_str="${procs[*]:-idle}"
+
+  printf "%-20s %-8s  %s\n" "$session" "$(human_size "$session_rss")" "$proc_str"
+done < <(tmux list-sessions -F '#{session_name}' | sort)
+
+echo ""
+printf "%-20s %-8s\n" "TOTAL" "$(human_size "$total_all")"
