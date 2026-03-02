@@ -89,6 +89,7 @@ alias ls='eza --color=auto'
 
 alias gs='git status'
 alias gc='git commit -m'
+alias awake='caffeinate -dims'
 
 # TMux dev session launcher
 alias dev='~/.config/tmux/scripts/dev-session.sh'
