@@ -89,7 +89,21 @@ alias ls='eza --color=auto'
 
 alias gs='git status'
 alias gc='git commit -m'
-alias awake='caffeinate -dims'
+awake() {
+  caffeinate -dims &
+  local pid=$!
+  trap "kill $pid 2>/dev/null; printf '\033[?25h\033[0m'; clear; echo 'Sleep prevention disabled.'; trap - INT" INT
+  local cols=$(tput cols) lines=$(tput lines)
+  printf '\033[2J\033[H\033[41;97;1m'
+  for ((i=1; i<=lines; i++)); do printf "%${cols}s" ''; done
+  local msg='STAYING  ALIVE'
+  local sub='Press Ctrl+C to stop'
+  printf '\033[%d;%dH%s' $((lines/2)) $(( (cols - ${#msg}) / 2 + 1 )) "$msg"
+  printf '\033[%d;%dH%s' $((lines/2 + 2)) $(( (cols - ${#sub}) / 2 + 1 )) "$sub"
+  printf '\033[?25l'
+  wait $pid 2>/dev/null
+  printf '\033[?25h\033[0m'; clear; trap - INT
+}
 
 # TMux dev session launcher
 alias dev='~/.config/tmux/scripts/dev-session.sh'
