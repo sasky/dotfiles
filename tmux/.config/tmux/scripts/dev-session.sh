@@ -8,9 +8,9 @@ DIR="${1:-.}"
 DIR="$(cd "$DIR" && pwd)"
 SESSION="$(basename "$DIR" | tr '.' '-')"
 
-# Attach if session already exists
-if tmux has-session -t "$SESSION" 2>/dev/null; then
-  exec tmux attach-session -t "$SESSION"
+# Attach if session already exists (= suffix forces exact match)
+if tmux has-session -t "=$SESSION" 2>/dev/null; then
+  exec tmux attach-session -t "=$SESSION"
 fi
 
 # Create session with first window, start Claude Code in left pane
