@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: dev <project-dir>
+# Usage: dev [project-dir]
+#        dev stop [session-name]
 # Creates a tmux session with Claude Code, NVim, and a terminal pane.
+
+if [[ "${1:-}" == "stop" ]]; then
+  if [[ -n "${2:-}" ]]; then
+    SESSION="$2"
+  else
+    SESSION="$(basename "$(pwd)" | tr '.' '-')"
+  fi
+  tmux kill-session -t "=$SESSION" 2>/dev/null && echo "Stopped session: $SESSION" || echo "No session: $SESSION"
+  exit 0
+fi
 
 DIR="${1:-.}"
 DIR="$(cd "$DIR" && pwd)"
