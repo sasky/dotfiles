@@ -95,6 +95,7 @@ awake() {
 
 # TMux dev session launcher
 alias dev='~/.config/tmux/scripts/dev-session.sh'
+alias control-room='~/.config/tmux/scripts/control-room.sh'
 
 alias ansinstall='sudo apt update && sudo apt install software-properties-common && sudo add-apt-repository --yes --update ppa:ansible/ansible && sudo apt install ansible'
 
