@@ -8,3 +8,12 @@
 
 -- Disable LazyVim's native spell check on markdown/text files (typos-lsp handles this)
 vim.api.nvim_del_augroup_by_name("lazyvim_wrap_spell")
+
+-- Enable word wrap for markdown and text files
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "markdown", "text" },
+  callback = function()
+    vim.opt_local.wrap = true
+    vim.opt_local.linebreak = true
+  end,
+})
