@@ -16,7 +16,6 @@ export EDITOR='nvim'
 # export ARCHFLAGS="-arch x86_64"
 
 export PATH="/usr/local/opt/openssl@1.1/bin:$PATH"
-export PATH="$HOME/.rbenv/bin:$PATH"
 export PATH=/usr/local/bin:/usr/local/sbin:${PATH}
 export PATH="$HOME/.local/bin:$PATH"
 
@@ -38,7 +37,7 @@ else
 fi
 # End of lines added by compinstall
 # eval "$(nodenv init -)"
-eval "$(rbenv init -)"
+eval "$(mise activate zsh)"
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 alias ra='brew services restart httpd'
 # https://stackoverflow.com/questions/33109315/unknown-unsupported-storage-engine-innodb
@@ -64,9 +63,8 @@ zle -N zle-keymap-select
 zle-line-init() { echo -ne '\e[6 q' }
 zle -N zle-line-init
 
-# alias ls='ls -F'
-# alias ll='ls -alh'
 alias vi='nvim'
+alias vim='nvim'
 alias e='xplr'
 alias h='hx'
 alias cat="bat"
@@ -74,6 +72,18 @@ alias l='eza'
 alias la='eza -a'
 alias ll='eza -lah'
 alias ls='eza --color=auto'
+alias dc-sh='devcontainer exec --workspace-folder . zsh'
+alias dc-cmd='devcontainer exec --workspace-folder .'
+
+docker-stop-all() {
+  local ids=$(docker ps -q)
+  if [[ -z "$ids" ]]; then
+    echo "No running containers."
+    return 0
+  fi
+  docker stop $ids
+}
+
 
 alias gs='git status'
 alias gc='git commit -m'
@@ -122,3 +132,10 @@ export PATH="/Users/cam/.codeium/windsurf/bin:$PATH"
 # Added by Antigravity
 export PATH="/Users/cam/.antigravity/antigravity/bin:$PATH"
 . "/Users/cam/.deno/env"
+
+# bun completions
+[ -s "/Users/cam/.bun/_bun" ] && source "/Users/cam/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
