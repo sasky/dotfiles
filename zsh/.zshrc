@@ -76,12 +76,12 @@ alias dc-sh='devcontainer exec --workspace-folder . zsh'
 alias dc-cmd='devcontainer exec --workspace-folder .'
 
 docker-stop-all() {
-  local ids=$(docker ps -q)
+  local ids=("${(@f)$(docker ps -q)}")
   if [[ -z "$ids" ]]; then
     echo "No running containers."
     return 0
   fi
-  docker stop $ids
+  docker stop "${ids[@]}"
 }
 
 
