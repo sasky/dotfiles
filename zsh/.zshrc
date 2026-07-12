@@ -138,7 +138,7 @@ alias ansinstall='sudo apt update && sudo apt install software-properties-common
 eval "$(fnm env --use-on-cd --shell zsh)"
 
 if command -v pyenv 1>/dev/null 2>&1; then
-  eval "$(pyenv init -)"
+  eval "$(pyenv init - --no-rehash)"
 fi
 
 # Cache brew prefix to avoid repeated subprocess calls
