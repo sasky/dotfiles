@@ -108,7 +108,7 @@ buffers, so LSP and edits work mid-review.
 - **codediff.nvim is pinned to v2.49.2** — codediff ≥ 2.50 changed
   `get_paths()` to return Path objects, which review.nvim can't consume
   yet. Unpin in `review.lua` once
-  [review.nvim#37](https://github.com/georgeguimaraes/review.nvim/pulls/37)
+  [review.nvim#37](https://github.com/georgeguimaraes/review.nvim/pull/37)
   is merged and released.
 - review.nvim is pinned to releases (`version = "*"`). Don't use the
   README's `v*` — lazy.nvim's update checker crashes on it.
