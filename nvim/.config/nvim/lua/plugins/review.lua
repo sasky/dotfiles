@@ -69,6 +69,33 @@ return {
         end,
         desc = "Sidekick Toggle CLI",
       },
+      {
+        "<leader>as",
+        mode = "x",
+        function()
+          -- ui.input is async (snacks), which drops visual mode before send;
+          -- exit visual to set the '< '> marks now, restore with gv on send
+          vim.cmd([[execute "normal! \<Esc>"]])
+          vim.ui.input({ prompt = "Comment for Claude (empty sends bare selection): " }, function(comment)
+            if comment == nil then
+              return
+            end
+            vim.cmd("normal! gv")
+            -- {position} renders a Claude Code @file:Lx-Ly mention for the selection
+            local msg = comment ~= "" and (comment .. "\n{position}\n{selection}") or "{position}\n{selection}"
+            require("sidekick.cli").send({ msg = msg })
+          end)
+        end,
+        desc = "Send selection + comment to Claude",
+      },
+      {
+        "<leader>ap",
+        mode = { "n", "x" },
+        function()
+          require("sidekick.cli").prompt()
+        end,
+        desc = "Sidekick prompt picker (explain/fix/tests/…)",
+      },
     },
   },
 }
