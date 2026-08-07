@@ -5,3 +5,6 @@
 -- fast way to close a buffer
 vim.opt.relativenumber = true
 vim.opt.spelloptions = "camel"
+
+-- Use intelephense for PHP (lang.php extra defaults to phpactor)
+vim.g.lazyvim_php_lsp = "intelephense"
