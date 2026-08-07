@@ -41,6 +41,22 @@ and `git.lua`.
 | `<leader>ac` | Toggle a sidekick-managed Claude terminal |
 | `<leader>aa` | Sidekick CLI picker (all tools/sessions) |
 
+## Ad-hoc sends — no review session needed
+
+| Keys | Mode | Action |
+|---|---|---|
+| `<leader>as` | visual | **Send selection + comment to Claude** — prompts for a comment, sends it with an `@file:Lx-Ly` mention and the code |
+| `<leader>ap` | normal/visual | Sidekick prompt picker — explain / fix / optimize / tests / diagnostics on `{this}` |
+
+The message Claude receives from `<leader>as`:
+
+```
+<your comment>
+@crates/hunk-core/src/lib.rs :L3:C1-L5:C16
+
+<the selected code>
+```
+
 ## Inside a review session (review.nvim)
 
 | Keys | Action |
