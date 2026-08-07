@@ -3,12 +3,18 @@ return {
   {
     "esmuellert/codediff.nvim",
     cmd = "CodeDiff",
+    -- pinned below 2.50: newer codediff returns typed Path objects from
+    -- get_paths, which review.nvim can't consume yet — unpin once
+    -- georgeguimaraes/review.nvim#37 is merged and released
+    version = "2.49.2",
   },
 
   -- Branch review with typed inline comments, exported to an AI session
   {
     "georgeguimaraes/review.nvim",
-    version = "v*",
+    -- "*" = latest release; the README's "v*" is not a valid lazy.nvim semver
+    -- range and crashes the update checker (lazy/manage/git.lua:58)
+    version = "*",
     dependencies = {
       "esmuellert/codediff.nvim",
       "MunifTanjim/nui.nvim",
