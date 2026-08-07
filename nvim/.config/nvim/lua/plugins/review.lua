@@ -44,6 +44,9 @@ return {
     "folke/sidekick.nvim",
     opts = {
       nes = { enabled = false }, -- no Copilot subscription; CLI integration only
+      cli = {
+        mux = { backend = "tmux", enabled = true }, -- persistent Claude sessions in tmux
+      },
     },
     keys = {
       {
