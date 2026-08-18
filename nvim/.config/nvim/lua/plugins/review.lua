@@ -24,16 +24,21 @@ return {
       {
         "<leader>gR",
         function()
-          local default = vim.fn.systemlist("git symbolic-ref --short refs/remotes/origin/HEAD")[1]
-          default = (vim.v.shell_error == 0 and default) or "main"
-          vim.ui.input({ prompt = "Review HEAD against base: ", default = default }, function(base)
+          local gitbase = require("util.git_base")
+          -- review.nvim/codediff run git against nvim's cwd, so that's what we review
+          local root = gitbase.root_of(vim.fn.getcwd())
+          if not root then
+            vim.notify("nvim's cwd is not a git repo — :cd into the repo first (Review uses the cwd)", vim.log.levels.WARN)
+            return
+          end
+          vim.ui.input({ prompt = "Review HEAD against base: ", default = gitbase.default_base(root) }, function(base)
             if not base or base == "" then
               return
             end
             -- diff from the merge-base, not the base tip: PR semantics (only this branch's changes)
-            local mb = vim.fn.systemlist("git merge-base " .. vim.fn.shellescape(base) .. " HEAD")[1]
+            local mb = vim.fn.systemlist({ "git", "-C", root, "merge-base", base, "HEAD" })[1]
             if vim.v.shell_error ~= 0 or not mb or mb == "" then
-              vim.notify("git merge-base " .. base .. " HEAD failed", vim.log.levels.ERROR)
+              vim.notify("git merge-base " .. base .. " HEAD failed in " .. root, vim.log.levels.ERROR)
               return
             end
             vim.cmd("Review commits " .. mb .. " HEAD")
@@ -43,6 +48,21 @@ return {
       },
     },
     opts = {},
+    config = function(_, opts)
+      require("review").setup(opts)
+      -- codediff's explorer auto-refresh re-selects the current file, which makes
+      -- review.nvim re-run its session setup and steal focus to the diff pane on
+      -- every tick (review.nvim#31). Allow the initial focus only, once per tab.
+      local hooks = require("review.hooks")
+      local focus, focused = hooks._focus_modified_pane, {}
+      hooks._focus_modified_pane = function(lifecycle, tabpage)
+        if focused[tabpage] then
+          return
+        end
+        focused[tabpage] = true
+        focus(lifecycle, tabpage)
+      end
+    end,
   },
 
   -- AI CLI terminal; review.nvim sends comments into it via S / :Review sidekick
