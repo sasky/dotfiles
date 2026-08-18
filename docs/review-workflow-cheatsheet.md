@@ -61,6 +61,8 @@ The message Claude receives from `<leader>as`:
 
 | Keys | Action |
 |---|---|
+| `]c` / `[c` | Next / previous hunk |
+| `]f` / `[f` | Next / previous file |
 | `i` | Add comment (prompts for type) |
 | `\cn` / `\cs` / `\ci` / `\cp` | Add Note / Suggestion / Issue / Praise directly |
 | `e` / `d` | Edit / delete comment under cursor |
@@ -91,6 +93,7 @@ your branch's changes even when the base has moved on.
 
 | Keys | Action |
 |---|---|
+| `]c` / `[c` | Next / previous hunk (native diff mode) |
 | `<Tab>` / `<S-Tab>` | Next / previous file |
 | `g?` | Help — full keymap list |
 | `:DiffviewClose` | Close the diffview tab |
