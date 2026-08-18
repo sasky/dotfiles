@@ -164,3 +164,6 @@ export PATH="/Users/cam/.antigravity/antigravity/bin:$PATH"
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+
+# Machine-local secrets (untracked)
+[ -f ~/.zshrc.local ] && source ~/.zshrc.local
