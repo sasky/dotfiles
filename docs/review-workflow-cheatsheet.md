@@ -119,8 +119,22 @@ buffers, so LSP and edits work mid-review.
 | `Ctrl+a z` | Zoom pane (great for fullscreening the review) |
 | `Ctrl+a [` | Copy mode (vi keys, `y` → clipboard) |
 
+## Quirks worth knowing
+
+- `<leader>gR` reviews **nvim's cwd repo** (codediff runs git there) —
+  `:cd` into the repo first. `<leader>gD` follows the **current file's**
+  repo, wherever nvim was started.
+- The base-branch prompt defaults to `origin/HEAD`, falling back to
+  `origin/main` → `origin/master` → `main` → `master` for repos set up
+  with `git remote add` (no origin/HEAD). `git remote set-head origin -a`
+  fixes such a repo permanently.
+
 ## Maintenance
 
+- **Focus-steal shim**: review.nvim refocuses the diff pane on every
+  explorer refresh/file select (review.nvim#31); our config wraps
+  `hooks._focus_modified_pane` to fire once per tab. Remove the wrap in
+  `review.lua` when #31 ships.
 - **codediff.nvim is pinned to v2.49.2** — codediff ≥ 2.50 changed
   `get_paths()` to return Path objects, which review.nvim can't consume
   yet. Unpin in `review.lua` once
