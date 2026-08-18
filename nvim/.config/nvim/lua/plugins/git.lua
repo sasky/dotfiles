@@ -23,11 +23,15 @@ return {
       {
         "<leader>gD",
         function()
-          local default = vim.fn.systemlist("git symbolic-ref --short refs/remotes/origin/HEAD")[1]
-          default = (vim.v.shell_error == 0 and default) or "main"
-          vim.ui.input({ prompt = "Diffview against base: ", default = default }, function(base)
+          local gitbase = require("util.git_base")
+          local root = gitbase.buffer_root()
+          if not root then
+            vim.notify("Not inside a git repository", vim.log.levels.WARN)
+            return
+          end
+          vim.ui.input({ prompt = "Diffview against base: ", default = gitbase.default_base(root) }, function(base)
             if base and base ~= "" then
-              vim.cmd("DiffviewOpen " .. base .. "...HEAD --imply-local")
+              vim.cmd("DiffviewOpen -C" .. vim.fn.fnameescape(root) .. " " .. base .. "...HEAD --imply-local")
             end
           end)
         end,
