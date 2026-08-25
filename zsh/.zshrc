@@ -47,6 +47,9 @@ alias rmysql='brew services restart mariadb'
 export JAVA_HOME=/Library/Java/JavaVirtualMachines/openjdk.jdk/Contents/Home
 export SOLR_DATA_HOME=/Users/cam/Sites/iod/ss/.solr
 
+# .NET (Homebrew install isn't in the default apphost search path)
+export DOTNET_ROOT=/opt/homebrew/opt/dotnet/libexec
+
 # Vi mode for shell prompt (Esc=normal, i=insert)
 bindkey -v
 export KEYTIMEOUT=1  # 10ms Esc delay (default 400ms feels sluggish)
