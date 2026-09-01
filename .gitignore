@@ -20,3 +20,5 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+# Migration checklist — names client projects/DBs; repo is public. Remove this line to commit it.
+MIGRATION.md
