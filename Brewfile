@@ -3,8 +3,6 @@
 # Undecided packages are listed in MIGRATION.md — decide there, then add here.
 # Usage on new machine: brew bundle --file=~/dotfiles/Brewfile
 
-tap "modem-dev/tap"
-
 # Shell & terminal experience
 brew "zsh"
 brew "tmux"
@@ -30,7 +28,6 @@ brew "gh"
 brew "lazygit"
 brew "git-crypt"
 brew "git-filter-repo"
-brew "modem-dev/tap/hunk"
 
 # Nvim ecosystem
 brew "tree-sitter@0.25" # nvim-treesitter (main branch) needs the CLI

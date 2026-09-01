@@ -93,28 +93,6 @@ docker-stop-all() {
 alias gs='git status'
 alias gc='git commit -m'
 
-# Hunk diff viewer — watch the working tree (optional pathspec: hunkdiff -- app/lib)
-hunkdiff() {
-  hunk diff --watch "$@"
-}
-
-# Hunk PR preview — watch current branch against a base, GitHub-style (three-dot).
-# Usage: hunkpr release/1   |   hunkpr main -- app/lib
-hunkpr() {
-  local base="$1"
-  if [[ -z "$base" ]]; then
-    echo "usage: hunkpr <base-branch> [-- <pathspec...>]   e.g. hunkpr release/1" >&2
-    return 1
-  fi
-  local current
-  current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || { echo "hunkpr: not a git repo" >&2; return 1; }
-  base="${base#origin/}"                          # tolerate 'origin/release/1'
-  git fetch -q origin "$base" 2>/dev/null         # refresh the base so the merge-base is current
-  local ref="$base"
-  git rev-parse --verify -q "origin/$base" >/dev/null && ref="origin/$base"  # prefer remote tip
-  shift
-  hunk diff --watch "$ref...$current" "$@"
-}
 awake() {
   caffeinate -dims &
   local pid=$!
