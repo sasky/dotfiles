@@ -35,15 +35,29 @@ brew "modem-dev/tap/hunk"
 # Nvim ecosystem
 brew "tree-sitter@0.25" # nvim-treesitter (main branch) needs the CLI
 
-# Runtimes / version manager — see MIGRATION.md decision before installing
+# Runtimes / version manager (mise only — no fnm/nvm/nodenv/pyenv)
 brew "mise"
+brew "dotnet" # DOTNET_ROOT is set in zsh/.zshrc
+
+# Rust dev helpers (toolchain itself comes via rustup, NOT brew)
+brew "bacon"
+brew "cargo-insta"
+brew "cargo-nextest"
+
+# Hobby
+brew "dasm" # Atari 2600 assembler
 
 # Services / misc
 brew "syncthing" # after install: brew services start syncthing
 brew "mkcert"
 brew "rtk" # LLM token-saving CLI proxy — wired into Claude Code (PreToolUse hook + ~/.claude/RTK.md)
 
+# AI CLIs
+brew "gemini-cli"
+
 # Casks
 cask "ghostty"
 cask "claude-code"
-# cask "orbstack"        # or "docker-desktop" — decide in MIGRATION.md
+cask "codex"
+cask "gcloud-cli" # NOT google-cloud-sdk (old duplicate cask)
+cask "orbstack" # Docker runtime — free for personal use; client work needs Pro (~$8/mo)
