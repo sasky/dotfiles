@@ -41,6 +41,7 @@ brew "mise"
 # Services / misc
 brew "syncthing" # after install: brew services start syncthing
 brew "mkcert"
+brew "rtk" # LLM token-saving CLI proxy — wired into Claude Code (PreToolUse hook + ~/.claude/RTK.md)
 
 # Casks
 cask "ghostty"
