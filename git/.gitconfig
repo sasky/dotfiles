@@ -1,0 +1,14 @@
+# Identity switches by directory — see github-accounts skill / MIGRATION.md.
+# Per-repo local config still overrides these when set.
+[init]
+	defaultBranch = main
+[push]
+	autoSetupRemote = true
+
+# Default identity: personal (covers ~/dotfiles and anything outside the two trees)
+[include]
+	path = ~/.gitconfig-sasky
+[includeIf "gitdir:~/Sites/"]
+	path = ~/.gitconfig-catch
+[includeIf "gitdir:~/Sasky/"]
+	path = ~/.gitconfig-sasky
