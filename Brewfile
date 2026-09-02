@@ -58,3 +58,6 @@ cask "claude-code"
 cask "codex"
 cask "gcloud-cli" # NOT google-cloud-sdk (old duplicate cask)
 cask "orbstack" # Docker runtime — free for personal use; client work needs Pro (~$8/mo)
+cask "raycast"
+cask "google-drive"
+cask "karabiner-elements"

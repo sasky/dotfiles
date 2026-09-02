@@ -22,3 +22,4 @@ rad.json
 TestResults.xml
 # Migration checklist — names client projects/DBs; repo is public. Remove this line to commit it.
 MIGRATION.md
+BOOTSTRAP.md
