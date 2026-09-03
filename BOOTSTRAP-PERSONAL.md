@@ -100,10 +100,13 @@ Host github.com
 Test: `ssh -T git@github.com-sasky` and `ssh -T git@github.com` → both "Hi sasky!".
 
 **Why:** A per-machine key means nothing secret has to travel here, and losing this
-laptop revokes one key, not your identity. The `github.com-sasky` alias is kept even
-though there's only one account, because every sasky repo's remote URL already uses it
-(`git@github.com-sasky:sasky/...`) — clones from the other machine's URLs just work.
-Plain `github.com` points at the same key, so either URL form is fine here.
+laptop revokes one key, not your identity. On this machine plain `github.com` URLs are
+all you need — one account, one key. The `github.com-sasky` Host block is a
+compatibility nicety only: an alias lives in each clone's `.git/config`, not on
+GitHub, so it matters only when you paste an alias-form URL
+(`git@github.com-sasky:sasky/...`) from the main machine's remotes or docs — with the
+block present, those paste without editing. Fresh clones here can just use the plain
+URLs GitHub's UI gives you.
 
 ---
 
@@ -111,12 +114,13 @@ Plain `github.com` points at the same key, so either URL form is fine here.
 
 **How:**
 ```sh
-git clone git@github.com-sasky:sasky/dotfiles.git ~/dotfiles
+git clone git@github.com:sasky/dotfiles.git ~/dotfiles
 ```
 
 **Why:** Same repo as the main machine — one source of truth for the terminal
 experience. Machine differences live entirely in which Brewfile you run (step 7) and
-which stow packages you skip.
+which stow packages you skip. (Plain `github.com` URL — the alias form would work too,
+per step 5, but there's no reason to use it here.)
 
 ---
 
@@ -216,11 +220,12 @@ device = new ID; never copy another machine's syncthing config.
 **How:**
 ```sh
 mkdir -p ~/Sasky
-git clone git@github.com-sasky:sasky/<name>.git ~/Sasky/<name>
+git clone git@github.com:sasky/<name>.git ~/Sasky/<name>
 ```
 
 **Why:** Keep the `~/Sasky/` layout — the stowed gitconfig and your muscle memory both
-assume it. Everything worth having is on the sasky account after the 2026-09 backup
+assume it. Plain URLs are fine on this machine (alias-form URLs pasted from the main
+machine also work, per step 5). Everything worth having is on the sasky account after the 2026-09 backup
 run (homelab, Second brain, courage, AlmaAdventure, Atari, code-crafters, elm-tasker,
 sasky.nz.php, …). Clone on demand rather than all at once.
 
