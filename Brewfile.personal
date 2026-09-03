@@ -1,0 +1,49 @@
+# Brewfile.personal — lean set for the personal Intel MacBook (2017, sasky-only).
+# Work/client tooling deliberately absent — see Brewfile for the full M5 setup.
+# Usage: brew bundle --file=~/dotfiles/Brewfile.personal
+
+# Shell & terminal experience
+brew "zsh"
+brew "tmux"
+brew "neovim"
+brew "oh-my-posh"
+brew "stow"
+brew "fzf"
+brew "zoxide"
+brew "eza"
+brew "bat"
+brew "fd"
+brew "ripgrep"
+brew "jq"
+brew "just"
+brew "tree"
+brew "wget"
+brew "coreutils"
+brew "gnu-sed"
+
+# Git
+brew "git"
+brew "gh"
+brew "lazygit"
+brew "git-crypt"
+
+# Nvim ecosystem
+brew "tree-sitter@0.25" # nvim-treesitter (main branch) needs the CLI
+
+# Runtimes / version manager (mise only)
+brew "mise"
+
+# Services / misc
+brew "syncthing" # after install: brew services start syncthing
+brew "rtk"       # Claude Code token-saving proxy — wire with: rtk init -g
+
+# Casks
+cask "ghostty"
+cask "claude-code"
+cask "raycast"
+
+# Optional hobby/dev extras — uncomment as needed:
+# brew "dasm"                                    # Atari 2600 assembler
+# brew "bacon"; brew "cargo-insta"; brew "cargo-nextest"  # rust helpers (install rust via rustup first)
+# brew "dotnet"                                  # C# (heavy on 2017 hardware)
+# cask "orbstack"                                # docker; or `brew install colima docker` for a lighter/free stack
