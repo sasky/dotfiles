@@ -26,6 +26,7 @@ brew "git"
 brew "gh"
 brew "lazygit"
 brew "git-crypt"
+brew "gnupg" # git-crypt unlock runs gpg
 
 # Nvim ecosystem
 brew "tree-sitter@0.25" # nvim-treesitter (main branch) needs the CLI
