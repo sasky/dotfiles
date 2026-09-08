@@ -27,6 +27,7 @@ brew "git"
 brew "gh"
 brew "lazygit"
 brew "git-crypt"
+brew "gnupg" # git-crypt unlock runs gpg; keyring itself migrates via the secrets DMG
 brew "git-filter-repo"
 
 # Nvim ecosystem
