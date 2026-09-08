@@ -36,7 +36,6 @@ else
   compinit -C
 fi
 # End of lines added by compinstall
-# eval "$(nodenv init -)"
 eval "$(mise activate zsh)"
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 alias ra='brew services restart httpd'
@@ -115,13 +114,6 @@ alias control-room='~/.config/tmux/scripts/control-room.sh'
 
 alias ansinstall='sudo apt update && sudo apt install software-properties-common && sudo add-apt-repository --yes --update ppa:ansible/ansible && sudo apt install ansible'
 
-# Node version manager (fnm - Rust-based, ~40x faster than nvm)
-eval "$(fnm env --use-on-cd --shell zsh)"
-
-if command -v pyenv 1>/dev/null 2>&1; then
-  eval "$(pyenv init - --no-rehash)"
-fi
-
 # Cache brew prefix to avoid repeated subprocess calls
 BREW_PREFIX="${BREW_PREFIX:-$(brew --prefix)}"
 source "$BREW_PREFIX/share/google-cloud-sdk/path.zsh.inc"
@@ -137,7 +129,7 @@ export PATH="/Users/cam/.codeium/windsurf/bin:$PATH"
 
 # Added by Antigravity
 export PATH="/Users/cam/.antigravity/antigravity/bin:$PATH"
-. "/Users/cam/.deno/env"
+[ -s "$HOME/.deno/env" ] && . "$HOME/.deno/env"
 
 # bun completions
 [ -s "/Users/cam/.bun/_bun" ] && source "/Users/cam/.bun/_bun"
