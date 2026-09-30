@@ -145,8 +145,8 @@ Runs inside a tmux pane. Loop: snapshot, render, redraw, sleep 2 s.
 Layout at the default 34 columns:
 
 ```
-AGENTS  1 needs you · 2 working · 1 ready
-1 ● needs you · input needed · 2m
+1 needs you · 1 ready · 1 working
+1 ● needs you · 2m · permission
   tsb-drupal-f4
   Tmux side panel for AI agent
   progress
@@ -159,11 +159,16 @@ AGENTS  1 needs you · 2 working · 1 ready
 C-a a jump · C-a b hide
 ```
 
-- Header: counts per non-empty state, in sort order.
-- Card: line one is the card number, state glyph, state, detail when
-  present, and time in state (`45s`, `2m`, `1h12m`). Line two is the session
-  name. Lines three and four are the task wrapped at width minus indent,
-  truncated with an ellipsis after two lines.
+- Header: counts per non-empty state, needs you then ready then working.
+  With all three states present it is 33 characters, so it fits the default
+  width; with no agents it reads `AGENTS`.
+- Card: line one is the card number, state glyph, state, time in state
+  (`45s`, `2m`, `1h12m`), then the detail when present. The age comes before
+  the detail so it survives at 34 columns; details are shortened for display
+  (`permission`, `input`, `bg script`). Line two is the session name. Lines
+  three and four are the task wrapped at width minus indent, truncated with
+  an ellipsis after two lines.
+- Any line longer than the width ends in an ellipsis rather than being cut.
 - Colours, from the cyberdream palette already used in the status bar:
   needs_you `#ff6e5e`, working `#5ef1ff`, ready unseen `#5eff6c`, ready seen
   `#3c4048`. The glyph, state word and card number carry the colour.
@@ -234,9 +239,16 @@ and fall back to the current client.
 
 ### Hooks
 
-Global hooks on `client-attached` and `client-session-changed` run
-`agent-watch ensure` for that client in the background. Result: every dev
-session Cam lands in gets a sidebar unless that session was toggled off.
+One global hook, `client-session-changed`, runs `agent-watch ensure` for
+that client in the background. On tmux 3.7 this hook also fires on
+`attach` and on the server-start `new-session`, so it covers every way of
+landing in a session. A second `client-attached` hook is not used: on
+attach both fire within a millisecond, both pass the "already has a
+sidebar" check, and two sidebars open (found in review). `ensure` and
+`toggle` also take a per-window `mkdir` lock around that check, with a
+10-second staleness limit, so a double keypress can't do the same.
+Result: every dev session Cam lands in gets a sidebar unless that session
+was toggled off.
 
 New windows created later in a session do not get a sidebar automatically;
 `Ctrl+a b` adds one. This keeps the hook set small for the experiment.
@@ -244,7 +256,7 @@ New windows created later in a session do not get a sidebar automatically;
 ### tmux.conf changes
 
 - The two key bindings.
-- The two hooks.
+- The `client-session-changed` hook.
 - `status-right` gains `#(~/.local/bin/agent-watch brief)` ahead of the
   current path segment.
 

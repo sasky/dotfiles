@@ -199,23 +199,25 @@ cmd_render() {
     def two_lines($n):
       wrap($n) as $ls
       | if ($ls | length) > 2 then [$ls[0], (($ls[1:] | join(" ")) | .[0:$n - 1] + "…")] else $ls end;
+    def short_detail:
+      {"permission prompt": "permission", "input needed": "input", "background script": "bg script"}[.] // .;
     (map(select(.state == "needs_you")) | length) as $n
     | (map(select(.state == "ready")) | length) as $r
     | (map(select(.state == "working")) | length) as $wk
     | ([ (if $n > 0 then "\($n) needs you" else empty end),
          (if $r > 0 then "\($r) ready" else empty end),
          (if $wk > 0 then "\($wk) working" else empty end) ] | join(" · ")) as $counts
-    | ["head\tAGENTS" + (if $counts == "" then "" else "  " + $counts end)]
+    | ["head\t" + (if $counts == "" then "AGENTS" else $counts end)]
       + (if length == 0 then ["dim\tno agents"]
          elif $w < 24 then [ to_entries[] | "\(.value | kind)\t\(.key + 1) ● \(.value.name)" ]
          else [ to_entries[] | .key as $i | .value
-                | "\(kind)\t\($i + 1) ● \(word)\(if .detail != "" then " · " + .detail else "" end) · \(ago)",
+                | "\(kind)\t\($i + 1) ● \(word) · \(ago)\(if .detail != "" then " · " + (.detail | short_detail) else "" end)",
                   "plain\t  \(.name)",
                   (.task | two_lines($w - 2) | .[] | "dim\t  " + .) ]
          end)
       + ["dim\tC-a a jump · C-a b hide"]
     | .[]
-    | (split("\t") | .[0] + "\t" + (.[1] | .[0:$w]))' \
+    | (split("\t") | .[0] + "\t" + (.[1] | clip($w)))' \
   | while IFS="$TAB" read -r kind text; do
       if [ "$plain" = 1 ]; then
         printf '%s\n' "$text"
@@ -317,7 +319,7 @@ cmd_menu() {
     "$AW_JQ_DEFS"'
     to_entries[] | .key as $i | .value
     | ({needs_you: $need, working: $work, ready: (if .unseen then $rnew else $rold end)}[.state]) as $c
-    | ("#[fg=\($c)]●#[default] \(word)  \(.name) · \(.task | .[0:40] | gsub("#"; "##"))") as $label
+    | ("#[fg=\($c)]●#[default] \(word)  \(.name | gsub("#"; "##")) · \(.task | .[0:40] | gsub("#"; "##"))") as $label
     | [ (if .target == null then "-" else "" end) + $label,
         (if .target != null and $i < 9 then ($i + 1 | tostring) else "" end),
         (if .target != null then "switch-client -t '"'"'\(.target.pane)'"'"'" else "" end) ]
@@ -348,11 +350,32 @@ open_sidebar() {
   "$AW_TMUX" split-window -fh -l "$AW_WIDTH" -d -t "$CTX_WINDOW" "$AW_SELF sidebar"
 }
 
+# Per-window lock so two hook-driven ensures (or a double keypress) can't
+# both pass find_sidebar and both split. mkdir is atomic; macOS has no flock.
+# A lock older than LOCK_STALE_SECS is treated as abandoned.
+LOCK_STALE_SECS=10
+LOCK_DIR=""
+lock_mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+acquire_window_lock() {
+  local now
+  LOCK_DIR="$AW_STATE_DIR/locks/$CTX_WINDOW"
+  mkdir -p "$AW_STATE_DIR/locks"
+  if mkdir "$LOCK_DIR" 2>/dev/null; then return 0; fi
+  now=$(date +%s)
+  if [ $((now - $(lock_mtime "$LOCK_DIR"))) -gt "$LOCK_STALE_SECS" ]; then
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+    mkdir "$LOCK_DIR" 2>/dev/null && return 0
+  fi
+  return 1
+}
+release_window_lock() { [ -n "$LOCK_DIR" ] && rmdir "$LOCK_DIR" 2>/dev/null || true; }
+
 # toggle [-c client]
 cmd_toggle() {
   local sb
   parse_client "$@"
   client_ctx
+  acquire_window_lock || return 0
   sb=$(find_sidebar)
   if [ -n "$sb" ]; then
     "$AW_TMUX" kill-pane -t "$sb"
@@ -361,6 +384,7 @@ cmd_toggle() {
     open_sidebar
     "$AW_TMUX" set-option -t "$CTX_SESSION" @agent_watch on
   fi
+  release_window_lock
 }
 
 # ensure [-c client]   open the sidebar unless present or the session opted out
@@ -370,8 +394,9 @@ cmd_ensure() {
   client_ctx
   opt=$("$AW_TMUX" show-options -t "$CTX_SESSION" -qv @agent_watch 2>/dev/null || true)
   [ "$opt" = "off" ] && return 0
-  [ -n "$(find_sidebar)" ] && return 0
-  open_sidebar
+  acquire_window_lock || return 0
+  [ -z "$(find_sidebar)" ] && open_sidebar
+  release_window_lock
 }
 
 # ── Dispatch ─────────────────────────────────────────────────────────────

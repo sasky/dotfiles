@@ -16,7 +16,7 @@ it. Hiding it with `Ctrl+a b` keeps it off for that session.
 ## What the cards mean
 
 ```
-1 ● needs you · input needed · 2m   <- number, state, why, time in state
+1 ● needs you · 2m · permission     <- number, state, time in state, why
   tsb-drupal-f4                     <- session name (/rename to change)
   Tmux side panel for AI agent      <- the pane title Claude Code sets
   progress
@@ -28,7 +28,8 @@ it. Hiding it with `Ctrl+a b` keeps it off for that session.
   you've visited the pane.
 - **working** (cyan): running, including background subagents and scripts.
 
-The status bar shows the same counts: `● needs you  ● ready  ● working`.
+The status bar shows the same counts as coloured glyphs: `● 1 ● 2 ● 1`
+in the same order (needs you, ready, working), omitting empty states.
 
 ## Where the data comes from
 

@@ -266,8 +266,8 @@ setup() { common_setup; }
           "task":"Tmux side panel for AI agent progress","state":"needs_you","detail":"input needed",
           "since":1000,"unseen":false,"target":{"session":"dev","window":"@0","pane":"%1"}}]'
   run bash -c "echo '$snap' | '$BIN' render --plain --width 34 --now 1130"
-  [ "${lines[0]}" = "AGENTS  1 needs you" ]
-  [ "${lines[1]}" = "1 ● needs you · input needed · 2m" ]
+  [ "${lines[0]}" = "1 needs you" ]
+  [ "${lines[1]}" = "1 ● needs you · 2m · input" ]
   [ "${lines[2]}" = "  tsb-drupal-f4" ]
   [ "${lines[3]}" = "  Tmux side panel for AI agent" ]
   [ "${lines[4]}" = "  progress" ]
@@ -280,7 +280,7 @@ setup() { common_setup; }
          {"provider":"claude","id":"2","session_id":"s","name":"b","cwd":"/x","task":"t",
           "state":"ready","detail":"","since":0,"unseen":true,"target":null}]'
   run bash -c "echo '$snap' | '$BIN' render --plain --width 34 --now 1045"
-  [ "${lines[0]}" = "AGENTS  1 ready · 1 working" ]
+  [ "${lines[0]}" = "1 ready · 1 working" ]
   [ "${lines[1]}" = "1 ● working · 45s" ]
   [ "${lines[4]}" = "2 ● ready · 17m" ]
 }
@@ -300,7 +300,7 @@ setup() { common_setup; }
           "state":"working","detail":"","since":0,"unseen":false,"target":null}]'
   run bash -c "echo '$snap' | '$BIN' render --plain --width 20 --now 0"
   [ "${lines[1]}" = "1 ● tsb-drupal-f4" ]
-  [ "${lines[2]}" = "C-a a jump · C-a b h" ]
+  [ "${lines[2]}" = "C-a a jump · C-a b …" ]
 }
 
 @test "render without --plain wraps lines in colour and clear-to-eol" {
@@ -347,7 +347,7 @@ setup() { common_setup; }
   run "$BIN" sidebar --once
   [ "$status" -eq 0 ]
   [ "${lines[1]}" = "1 ● tsb-drupal-f4" ]
-  [ "${lines[2]}" = "C-a a jump · C-a b h" ]
+  [ "${lines[2]}" = "C-a a jump · C-a b …" ]
 }
 
 # ── menu ─────────────────────────────────────────────────────────────────
@@ -442,4 +442,82 @@ setup() { common_setup; }
   printf '%%1\t\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
   run "$BIN" ensure -c /dev/ttys001
   calls | grep -q '^display-message -c /dev/ttys001 -p '
+}
+
+# ── fix pass: window lock ────────────────────────────────────────────────
+
+@test "ensure does not split while another ensure holds the window lock" {
+  printf 'dev\t@0\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  printf '%%1\t\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
+  mkdir -p "$AGENT_WATCH_STATE_DIR/locks/@0"
+  run "$BIN" ensure -c /dev/ttys001
+  [ "$status" -eq 0 ]
+  ! calls | grep -q '^split-window'
+}
+
+@test "ensure breaks a stale window lock and splits" {
+  printf 'dev\t@0\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  printf '%%1\t\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
+  mkdir -p "$AGENT_WATCH_STATE_DIR/locks/@0"
+  touch -t 202001010000 "$AGENT_WATCH_STATE_DIR/locks/@0"
+  run "$BIN" ensure -c /dev/ttys001
+  calls | grep -q '^split-window'
+  [ ! -d "$AGENT_WATCH_STATE_DIR/locks/@0" ]
+}
+
+@test "ensure releases the window lock after splitting" {
+  printf 'dev\t@0\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  printf '%%1\t\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
+  run "$BIN" ensure -c /dev/ttys001
+  calls | grep -q '^split-window'
+  [ ! -d "$AGENT_WATCH_STATE_DIR/locks/@0" ]
+}
+
+@test "toggle does nothing while the window lock is held" {
+  printf 'dev\t@0\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  printf '%%1\t\n%%5\t1\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
+  mkdir -p "$AGENT_WATCH_STATE_DIR/locks/@0"
+  run "$BIN" toggle -c /dev/ttys001
+  [ "$status" -eq 0 ]
+  ! calls | grep -q '^kill-pane'
+  ! calls | grep -q '^split-window'
+}
+
+# ── fix pass: menu name escaping ─────────────────────────────────────────
+
+@test "menu escapes # in the session name" {
+  session 101 busy "" "dev:@0.%1" 1000000 "fix #Sentry"
+  pane %1 "✳ t"
+  run "$BIN" menu
+  line=$(calls | grep '^display-menu')
+  [[ "$line" == *"working  fix ##Sentry · t 1 switch-client"* ]]
+}
+
+# ── fix pass: 34-column layout ───────────────────────────────────────────
+
+@test "render header with all three states fits 34 columns" {
+  snap='[{"provider":"claude","id":"1","session_id":"s","name":"a","cwd":"/x","task":"t","state":"needs_you","detail":"input needed","since":0,"unseen":false,"target":null},
+         {"provider":"claude","id":"2","session_id":"s","name":"b","cwd":"/x","task":"t","state":"ready","detail":"","since":0,"unseen":true,"target":null},
+         {"provider":"claude","id":"3","session_id":"s","name":"c","cwd":"/x","task":"t","state":"working","detail":"","since":0,"unseen":false,"target":null},
+         {"provider":"claude","id":"4","session_id":"s","name":"d","cwd":"/x","task":"t","state":"working","detail":"","since":0,"unseen":false,"target":null}]'
+  run bash -c "echo '$snap' | '$BIN' render --plain --width 34 --now 0"
+  [ "${lines[0]}" = "1 needs you · 1 ready · 2 working" ]
+}
+
+@test "render keeps the age on a permission prompt card at 34 columns" {
+  snap='[{"provider":"claude","id":"1","session_id":"s","name":"a","cwd":"/x","task":"t","state":"needs_you","detail":"permission prompt","since":1000,"unseen":false,"target":null}]'
+  run bash -c "echo '$snap' | '$BIN' render --plain --width 34 --now 1130"
+  [ "${lines[1]}" = "1 ● needs you · 2m · permission" ]
+}
+
+@test "render shortens background script and keeps the age" {
+  snap='[{"provider":"claude","id":"1","session_id":"s","name":"a","cwd":"/x","task":"t","state":"working","detail":"background script","since":1000,"unseen":false,"target":null}]'
+  run bash -c "echo '$snap' | '$BIN' render --plain --width 34 --now 1045"
+  [ "${lines[1]}" = "1 ● working · 45s · bg script" ]
+}
+
+@test "render ends an over-long line with an ellipsis instead of a hard cut" {
+  snap='[{"provider":"claude","id":"1","session_id":"s","name":"a","cwd":"/x","task":"t","state":"needs_you","detail":"permission prompt","since":1000,"unseen":false,"target":null}]'
+  run bash -c "echo '$snap' | '$BIN' render --plain --width 24 --now 1130"
+  [ "${lines[1]}" = "1 ● needs you · 2m · pe…" ]
 }
