@@ -149,3 +149,78 @@ setup() { common_setup; }
   [ "$(jq -r '.[0].cwd' <<<"$output")" = "/tmp/proj" ]
   [ "$(jq -r '.[0].since' <<<"$output")" = "1790739236" ]
 }
+
+# ── snapshot: seen-tracking ──────────────────────────────────────────────
+
+@test "a ready agent with no seen record is unseen" {
+  session 101 idle "" "dev:@0.%1" 5000000
+  pane %1 "✳ x"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].unseen' <<<"$output")" = "true" ]
+}
+
+@test "a ready agent seen before it went ready is unseen" {
+  session 101 idle "" "dev:@0.%1" 5000000
+  pane %1 "✳ x"
+  echo '{"claude:101": 4000}' > "$AGENT_WATCH_STATE_DIR/seen.json"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].unseen' <<<"$output")" = "true" ]
+}
+
+@test "a ready agent seen after it went ready is not unseen" {
+  session 101 idle "" "dev:@0.%1" 5000000
+  pane %1 "✳ x"
+  echo '{"claude:101": 6000}' > "$AGENT_WATCH_STATE_DIR/seen.json"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].unseen' <<<"$output")" = "false" ]
+}
+
+@test "a working agent is never unseen" {
+  session 101 busy "" "dev:@0.%1" 5000000
+  pane %1 "✳ x"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].unseen' <<<"$output")" = "false" ]
+}
+
+@test "snapshot records a seen time when a client is on the agent's pane" {
+  session 101 idle "" "dev:@0.%1" 5000000
+  pane %1 "✳ x"
+  client %1
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].unseen' <<<"$output")" = "false" ]
+  seen=$(jq -r '."claude:101"' "$AGENT_WATCH_STATE_DIR/seen.json")
+  [ "$seen" -gt 5000 ]
+}
+
+@test "snapshot keeps earlier seen times for agents not currently viewed" {
+  session 101 idle "" "dev:@0.%1" 5000000
+  session 102 idle "" "dev:@0.%2" 5000000
+  pane %1 "✳ x"
+  pane %2 "✳ y"
+  echo '{"claude:102": 7000}' > "$AGENT_WATCH_STATE_DIR/seen.json"
+  client %1
+  run "$BIN" snapshot
+  [ "$(jq -r '."claude:102"' "$AGENT_WATCH_STATE_DIR/seen.json")" = "7000" ]
+}
+
+@test "snapshot prunes seen entries for agents that are gone" {
+  session 101 idle "" "dev:@0.%1" 5000000
+  pane %1 "✳ x"
+  echo '{"claude:101": 7000, "claude:555": 7000}' > "$AGENT_WATCH_STATE_DIR/seen.json"
+  run "$BIN" snapshot
+  [ "$(jq 'has("claude:555")' "$AGENT_WATCH_STATE_DIR/seen.json")" = "false" ]
+}
+
+# ── snapshot: sort order ─────────────────────────────────────────────────
+
+@test "snapshot sorts needs_you, ready unseen, working, ready seen, oldest first within a group" {
+  session 101 busy    "" "dev:@0.%1" 100000  "A-working"
+  session 102 waiting "" "dev:@0.%2" 500000  "B-needs-late"
+  session 103 waiting "" "dev:@0.%3" 200000  "C-needs-early"
+  session 104 idle    "" "dev:@0.%4" 300000  "D-ready-unseen"
+  session 105 idle    "" "dev:@0.%5" 50000   "E-ready-seen"
+  for p in 1 2 3 4 5; do pane "%$p" "✳ t$p"; done
+  echo '{"claude:105": 9000}' > "$AGENT_WATCH_STATE_DIR/seen.json"
+  run "$BIN" snapshot
+  [ "$(jq -r 'map(.name) | join(",")' <<<"$output")" = "C-needs-early,B-needs-late,D-ready-unseen,A-working,E-ready-seen" ]
+}

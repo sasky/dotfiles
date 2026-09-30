@@ -58,6 +58,8 @@ AW_JQ_DEFS='
 TAB=$'\t'
 # pane_id<TAB>pane_title for every pane on the server; empty if no server.
 tmux_panes() { "$AW_TMUX" list-panes -a -F "#{pane_id}${TAB}#{pane_title}" 2>/dev/null || true; }
+# One pane id per attached client: the pane each client is looking at now.
+tmux_client_panes() { "$AW_TMUX" list-clients -F '#{pane_id}' 2>/dev/null || true; }
 
 # ── Providers ────────────────────────────────────────────────────────────
 # A provider prints one raw JSON object per agent with the fields:
@@ -93,23 +95,43 @@ provider_claude() {
 
 # ── Collector ────────────────────────────────────────────────────────────
 cmd_snapshot() {
-  local raw panes_json
+  local raw panes_json clients_json now seen_file tmp out
+  now=$(date +%s)
+  mkdir -p "$AW_STATE_DIR"
+  seen_file="$AW_STATE_DIR/seen.json"
+  # Our own file, but reset it rather than fail if it was ever left corrupt.
+  jq -e 'type == "object"' "$seen_file" >/dev/null 2>&1 || printf '{}\n' > "$seen_file"
+
   raw=$(provider_claude)
   panes_json=$(tmux_panes | jq -R -s -c '
     split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: (.[1] // "")}) | from_entries')
-  printf '%s\n' "$raw" | jq -s -c --argjson panes "$panes_json" "$AW_JQ_DEFS"'
-    map(
-      (.tmux | parse_target) as $t
-      | (if $t == null then false else ($panes | has($t.pane)) end) as $has_pane
-      | (if $has_pane then ($panes[$t.pane] | strip_glyph) else "" end) as $title
-      | map_state as $s
-      | {provider, id, session_id, name, cwd,
-         task: (if ($title | length) > 0 then $title else .name end),
-         state: $s.state, detail: $s.detail, since,
-         unseen: false,
-         target: (if $has_pane then $t else null end)}
-    )
-    | sort_by(rank, .since)'
+  clients_json=$(tmux_client_panes | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+  out=$(printf '%s\n' "$raw" | jq -s -c \
+    --argjson now "$now" --argjson panes "$panes_json" --argjson clients "$clients_json" \
+    --slurpfile seenfile "$seen_file" "$AW_JQ_DEFS"'
+    ($seenfile[0] // {}) as $seen0
+    | map(
+        (.tmux | parse_target) as $t
+        | (if $t == null then false else ($panes | has($t.pane)) end) as $has_pane
+        | (if $has_pane then ($panes[$t.pane] | strip_glyph) else "" end) as $title
+        | map_state as $s
+        | "\(.provider):\(.id)" as $key
+        | (if $has_pane then (($clients | index($t.pane)) != null) else false end) as $viewed
+        | (if $viewed then $now else ($seen0[$key] // null) end) as $seen_at
+        | {provider, id, session_id, name, cwd,
+           task: (if ($title | length) > 0 then $title else .name end),
+           state: $s.state, detail: $s.detail, since,
+           unseen: ($s.state == "ready" and ($seen_at == null or $seen_at < .since)),
+           target: (if $has_pane then $t else null end),
+           _key: $key, _seen: $seen_at}
+      )
+    | { seen: (map(select(._seen != null) | {key: ._key, value: ._seen}) | from_entries),
+        snapshot: (map(del(._key, ._seen)) | sort_by(rank, .since)) }')
+
+  tmp=$(mktemp "$AW_STATE_DIR/seen.XXXXXX")
+  printf '%s\n' "$out" | jq -c '.seen' > "$tmp" && mv "$tmp" "$seen_file"
+  printf '%s\n' "$out" | jq -c '.snapshot'
 }
 
 # ── Dispatch ─────────────────────────────────────────────────────────────
