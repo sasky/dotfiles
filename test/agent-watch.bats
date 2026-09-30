@@ -349,3 +349,44 @@ setup() { common_setup; }
   [ "${lines[1]}" = "1 ● tsb-drupal-f4" ]
   [ "${lines[2]}" = "C-a a jump · C-a b h" ]
 }
+
+# ── menu ─────────────────────────────────────────────────────────────────
+
+@test "menu with no agents shows a message instead of a menu" {
+  run "$BIN" menu -c /dev/ttys001
+  [ "$status" -eq 0 ]
+  calls | grep -q '^display-message -c /dev/ttys001 agent-watch: no agents$'
+  ! calls | grep -q '^display-menu'
+}
+
+@test "menu builds one row per agent with number keys and switch-client commands" {
+  session 101 waiting "" "dev:@0.%1" 1000000 "alpha"
+  session 102 busy    "" "dev:@0.%2" 1000000 "beta"
+  pane %1 "✳ First task"
+  pane %2 "✳ Second task"
+  run "$BIN" menu -c /dev/ttys001
+  [ "$status" -eq 0 ]
+  line=$(calls | grep '^display-menu')
+  [[ "$line" == "display-menu -c /dev/ttys001 -T  agents  -x C -y C "* ]]
+  [[ "$line" == *"#[fg=#ff6e5e]●#[default] needs you  alpha · First task 1 switch-client -t '%1'"* ]]
+  [[ "$line" == *"#[fg=#5ef1ff]●#[default] working  beta · Second task 2 switch-client -t '%2'"* ]]
+}
+
+@test "menu disables rows whose pane is gone" {
+  session 101 busy "" "dev:@0.%1" 1000000 "alpha"
+  run "$BIN" menu
+  line=$(calls | grep '^display-menu')
+  [[ "$line" == *"-#[fg=#5ef1ff]●#[default] working  alpha · alpha  "* ]]
+}
+
+@test "menu escapes # in task text and stops numbering after 9" {
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    session "$((100 + i))" busy "" "dev:@0.%$i" "$((1000000 * i))" "a$i"
+    pane "%$i" "✳ issue #$i"
+  done
+  run "$BIN" menu
+  line=$(calls | grep '^display-menu')
+  [[ "$line" == *"a1 · issue ##1 1 switch-client -t '%1'"* ]]
+  [[ "$line" == *"a9 · issue ##9 9 switch-client -t '%9'"* ]]
+  [[ "$line" == *"a10 · issue ##10  switch-client -t '%10'"* ]]
+}

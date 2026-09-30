@@ -272,6 +272,59 @@ cmd_sidebar() {
   done
 }
 
+# ── tmux glue ────────────────────────────────────────────────────────────
+CLIENT=""
+
+# parse_client ARGS...   sets CLIENT from -c <client>, ignores anything else
+parse_client() {
+  CLIENT=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -c) CLIENT="${2:-}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+}
+
+# tmux_c SUBCOMMAND ARGS...   runs tmux with -c "$CLIENT" inserted when set
+tmux_c() {
+  local sub="$1"
+  shift
+  if [ -n "$CLIENT" ]; then
+    "$AW_TMUX" "$sub" -c "$CLIENT" "$@"
+  else
+    "$AW_TMUX" "$sub" "$@"
+  fi
+}
+
+# menu [-c client]   display-menu of agents; number keys jump
+cmd_menu() {
+  local snap label key cmd
+  local -a args
+  args=()
+  parse_client "$@"
+  snap=$(cmd_snapshot)
+  if [ "$(printf '%s\n' "$snap" | jq 'length')" -eq 0 ]; then
+    tmux_c display-message "agent-watch: no agents"
+    return 0
+  fi
+  # Fields are joined with US (0x1f): a whitespace IFS such as tab would
+  # collapse an empty key field and shift the command into its place.
+  while IFS=$'\x1f' read -r label key cmd; do
+    args+=("$label" "$key" "$cmd")
+  done < <(printf '%s\n' "$snap" | jq -r \
+    --arg need "$C_NEED" --arg work "$C_WORK" --arg rnew "$C_READY_NEW" --arg rold "$C_READY" \
+    "$AW_JQ_DEFS"'
+    to_entries[] | .key as $i | .value
+    | ({needs_you: $need, working: $work, ready: (if .unseen then $rnew else $rold end)}[.state]) as $c
+    | ("#[fg=\($c)]●#[default] \(word)  \(.name) · \(.task | .[0:40] | gsub("#"; "##"))") as $label
+    | [ (if .target == null then "-" else "" end) + $label,
+        (if .target != null and $i < 9 then ($i + 1 | tostring) else "" end),
+        (if .target != null then "switch-client -t '"'"'\(.target.pane)'"'"'" else "" end) ]
+    | join("\u001f")')
+  tmux_c display-menu -T ' agents ' -x C -y C "${args[@]}"
+}
+
 # ── Dispatch ─────────────────────────────────────────────────────────────
 main() {
   local cmd="${1:-}"
@@ -281,6 +334,7 @@ main() {
     brief) cmd_brief "$@" ;;
     render) cmd_render "$@" ;;
     sidebar) cmd_sidebar "$@" ;;
+    menu) cmd_menu "$@" ;;
     -h|--help|help|"") usage ;;
     *) die "unknown command: $cmd" ;;
   esac
