@@ -224,3 +224,29 @@ setup() { common_setup; }
   run "$BIN" snapshot
   [ "$(jq -r 'map(.name) | join(",")' <<<"$output")" = "C-needs-early,B-needs-late,D-ready-unseen,A-working,E-ready-seen" ]
 }
+
+# ── brief ────────────────────────────────────────────────────────────────
+
+@test "brief prints nothing when there are no agents" {
+  run "$BIN" brief
+  [ "$status" -eq 0 ]
+  [ "$output" = "" ]
+}
+
+@test "brief prints needs_you, ready, working counts in that order with colours" {
+  session 101 waiting "" "dev:@0.%1"
+  session 102 idle    "" "dev:@0.%2"
+  session 103 busy    "" "dev:@0.%3"
+  session 104 busy    "" "dev:@0.%4"
+  for p in 1 2 3 4; do pane "%$p" "✳ t"; done
+  run "$BIN" brief
+  [ "$output" = "#[fg=#ff6e5e]● 1 #[fg=#5eff6c]● 1 #[fg=#5ef1ff]● 2#[fg=default]" ]
+}
+
+@test "brief omits empty states and dims ready when every ready agent is seen" {
+  session 102 idle "" "dev:@0.%2" 5000000
+  pane %2 "✳ t"
+  echo '{"claude:102": 6000}' > "$AGENT_WATCH_STATE_DIR/seen.json"
+  run "$BIN" brief
+  [ "$output" = "#[fg=#3c4048]● 1#[fg=default]" ]
+}

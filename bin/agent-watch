@@ -134,12 +134,28 @@ cmd_snapshot() {
   printf '%s\n' "$out" | jq -c '.snapshot'
 }
 
+# ── Views ────────────────────────────────────────────────────────────────
+cmd_brief() {
+  cmd_snapshot | jq -r \
+    --arg need "$C_NEED" --arg work "$C_WORK" --arg rnew "$C_READY_NEW" --arg rold "$C_READY" '
+    def seg(c; n): "#[fg=\(c)]● \(n)";
+    (map(select(.state == "needs_you")) | length) as $n
+    | (map(select(.state == "ready" and .unseen)) | length) as $ru
+    | (map(select(.state == "ready" and (.unseen | not))) | length) as $rs
+    | (map(select(.state == "working")) | length) as $w
+    | [ (if $n > 0 then seg($need; $n) else empty end),
+        (if ($ru + $rs) > 0 then seg((if $ru > 0 then $rnew else $rold end); $ru + $rs) else empty end),
+        (if $w > 0 then seg($work; $w) else empty end) ]
+    | if length == 0 then "" else join(" ") + "#[fg=default]" end'
+}
+
 # ── Dispatch ─────────────────────────────────────────────────────────────
 main() {
   local cmd="${1:-}"
   [ $# -gt 0 ] && shift
   case "$cmd" in
     snapshot) cmd_snapshot "$@" ;;
+    brief) cmd_brief "$@" ;;
     -h|--help|help|"") usage ;;
     *) die "unknown command: $cmd" ;;
   esac
