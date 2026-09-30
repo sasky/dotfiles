@@ -15,3 +15,137 @@ setup() { common_setup; }
   [ "$status" -eq 1 ]
   [[ "$output" == *"unknown command"* ]]
 }
+
+# ── snapshot: state mapping ──────────────────────────────────────────────
+
+@test "snapshot maps busy to working with empty detail" {
+  session 101 busy "" "dev:@0.%1"
+  pane %1 "✳ Fix the thing"
+  run "$BIN" snapshot
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.[0].state' <<<"$output")" = "working" ]
+  [ "$(jq -r '.[0].detail' <<<"$output")" = "" ]
+}
+
+@test "snapshot maps shell to working with background script detail" {
+  session 101 shell "" "dev:@0.%1"
+  pane %1 "✳ Fix the thing"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].state' <<<"$output")" = "working" ]
+  [ "$(jq -r '.[0].detail' <<<"$output")" = "background script" ]
+}
+
+@test "snapshot maps waiting to needs_you carrying waitingFor" {
+  session 101 waiting "permission prompt" "dev:@0.%1"
+  pane %1 "✳ Fix the thing"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].state' <<<"$output")" = "needs_you" ]
+  [ "$(jq -r '.[0].detail' <<<"$output")" = "permission prompt" ]
+}
+
+@test "snapshot maps waiting without waitingFor to needs input" {
+  session 101 waiting "" "dev:@0.%1"
+  pane %1 "✳ Fix the thing"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].state' <<<"$output")" = "needs_you" ]
+  [ "$(jq -r '.[0].detail' <<<"$output")" = "needs input" ]
+}
+
+@test "snapshot maps idle to ready" {
+  session 101 idle "" "dev:@0.%1"
+  pane %1 "✳ Fix the thing"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].state' <<<"$output")" = "ready" ]
+}
+
+@test "snapshot shows an unknown status as working with the raw status as detail" {
+  session 101 zzz "" "dev:@0.%1"
+  pane %1 "✳ Fix the thing"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].state' <<<"$output")" = "working" ]
+  [ "$(jq -r '.[0].detail' <<<"$output")" = "zzz" ]
+}
+
+# ── snapshot: skips and fallbacks ────────────────────────────────────────
+
+@test "snapshot skips a dead pid" {
+  session 999 busy "" "dev:@0.%1"
+  session 101 busy "" "dev:@0.%1"
+  pane %1 "✳ Fix the thing"
+  run "$BIN" snapshot
+  [ "$(jq 'length' <<<"$output")" -eq 1 ]
+  [ "$(jq -r '.[0].id' <<<"$output")" = "101" ]
+}
+
+@test "snapshot skips a truncated registry file and keeps the rest" {
+  session 101 busy "" "dev:@0.%1"
+  printf '{"pid": 102, "status": "bu' > "$AGENT_WATCH_SESSIONS_DIR/102.json"
+  pane %1 "✳ Fix the thing"
+  run "$BIN" snapshot
+  [ "$status" -eq 0 ]
+  [ "$(jq 'length' <<<"$output")" -eq 1 ]
+}
+
+@test "snapshot with no registry directory prints an empty array" {
+  rm -rf "$AGENT_WATCH_SESSIONS_DIR"
+  run "$BIN" snapshot
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
+@test "snapshot without a tmux field has null target and task falls back to name" {
+  session 101 busy "" "" 1000000 "my-agent"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].target' <<<"$output")" = "null" ]
+  [ "$(jq -r '.[0].task' <<<"$output")" = "my-agent" ]
+}
+
+@test "snapshot whose pane is gone has null target" {
+  session 101 busy "" "dev:@0.%1"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].target' <<<"$output")" = "null" ]
+}
+
+# ── snapshot: task text and target ───────────────────────────────────────
+
+@test "snapshot strips the leading glyph from the pane title" {
+  session 101 busy "" "dev:@0.%1"
+  pane %1 "✳ Money mindset phase 1"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].task' <<<"$output")" = "Money mindset phase 1" ]
+}
+
+@test "snapshot keeps a title with no glyph as-is" {
+  session 101 busy "" "dev:@0.%1"
+  pane %1 "plain title"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].task' <<<"$output")" = "plain title" ]
+}
+
+@test "snapshot falls back to name when the title is empty" {
+  session 101 busy "" "dev:@0.%1" 1000000 "my-agent"
+  pane %1 ""
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].task' <<<"$output")" = "my-agent" ]
+}
+
+@test "snapshot parses the tmux target including a session name with spaces" {
+  session 101 busy "" "my project:@3.%7"
+  pane %7 "✳ x"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].target.session' <<<"$output")" = "my project" ]
+  [ "$(jq -r '.[0].target.window' <<<"$output")" = "@3" ]
+  [ "$(jq -r '.[0].target.pane' <<<"$output")" = "%7" ]
+}
+
+@test "snapshot carries id, session_id, name, cwd and since in seconds" {
+  session 101 busy "" "dev:@0.%1" 1790739236790 "tsb-drupal-f4"
+  pane %1 "✳ x"
+  run "$BIN" snapshot
+  [ "$(jq -r '.[0].provider' <<<"$output")" = "claude" ]
+  [ "$(jq -r '.[0].id' <<<"$output")" = "101" ]
+  [ "$(jq -r '.[0].session_id' <<<"$output")" = "sid-101" ]
+  [ "$(jq -r '.[0].name' <<<"$output")" = "tsb-drupal-f4" ]
+  [ "$(jq -r '.[0].cwd' <<<"$output")" = "/tmp/proj" ]
+  [ "$(jq -r '.[0].since' <<<"$output")" = "1790739236" ]
+}

@@ -34,11 +34,90 @@ die() { printf 'agent-watch: %s\n' "$*" >&2; exit 1; }
 
 need_jq() { command -v jq >/dev/null 2>&1 || die "jq is required (brew install jq)"; }
 
+# ── Shared jq definitions ────────────────────────────────────────────────
+# Prepended to every jq program so views and collector agree on the rules.
+AW_JQ_DEFS='
+  def parse_target:
+    capture("^(?<session>[^:]+):(?<window>@[0-9]+)\\.(?<pane>%[0-9]+)$") // null;
+  def strip_glyph: sub("^[^\\p{L}\\p{N}~/.]+"; "");
+  def map_state:
+    if   .raw_status == "busy"    then {state: "working",   detail: ""}
+    elif .raw_status == "shell"   then {state: "working",   detail: "background script"}
+    elif .raw_status == "waiting" then {state: "needs_you", detail: (if .waiting_for == "" then "needs input" else .waiting_for end)}
+    elif .raw_status == "idle"    then {state: "ready",     detail: ""}
+    else                               {state: "working",   detail: .raw_status} end;
+  def rank:
+    if .state == "needs_you" then 0
+    elif .state == "ready" and .unseen then 1
+    elif .state == "working" then 2
+    else 3 end;
+  def word: {needs_you: "needs you", working: "working", ready: "ready"}[.state];
+'
+
+# ── tmux queries ─────────────────────────────────────────────────────────
+TAB=$'\t'
+# pane_id<TAB>pane_title for every pane on the server; empty if no server.
+tmux_panes() { "$AW_TMUX" list-panes -a -F "#{pane_id}${TAB}#{pane_title}" 2>/dev/null || true; }
+
+# ── Providers ────────────────────────────────────────────────────────────
+# A provider prints one raw JSON object per agent with the fields:
+#   provider id session_id name cwd raw_status waiting_for since tmux
+pid_alive() {
+  if [ -n "${AGENT_WATCH_ALIVE_PIDS:-}" ]; then
+    case " $AGENT_WATCH_ALIVE_PIDS " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+  fi
+  kill -0 "$1" 2>/dev/null
+}
+
+provider_claude() {
+  local f pid
+  [ -d "$AW_SESSIONS_DIR" ] || return 0
+  for f in "$AW_SESSIONS_DIR"/*.json; do
+    [ -e "$f" ] || continue
+    pid=$(jq -r '.pid // empty' "$f" 2>/dev/null) || continue
+    [ -n "$pid" ] || continue
+    pid_alive "$pid" || continue
+    jq -c '{
+      provider: "claude",
+      id: (.pid | tostring),
+      session_id: (.sessionId // ""),
+      name: (.name // ("claude-" + (.pid | tostring))),
+      cwd: (.cwd // ""),
+      raw_status: (.status // "unknown"),
+      waiting_for: (.waitingFor // ""),
+      since: (((.statusUpdatedAt // .updatedAt // .startedAt // 0) / 1000) | floor),
+      tmux: (.tmux // "")
+    }' "$f" 2>/dev/null || true
+  done
+}
+
+# ── Collector ────────────────────────────────────────────────────────────
+cmd_snapshot() {
+  local raw panes_json
+  raw=$(provider_claude)
+  panes_json=$(tmux_panes | jq -R -s -c '
+    split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: (.[1] // "")}) | from_entries')
+  printf '%s\n' "$raw" | jq -s -c --argjson panes "$panes_json" "$AW_JQ_DEFS"'
+    map(
+      (.tmux | parse_target) as $t
+      | (if $t == null then false else ($panes | has($t.pane)) end) as $has_pane
+      | (if $has_pane then ($panes[$t.pane] | strip_glyph) else "" end) as $title
+      | map_state as $s
+      | {provider, id, session_id, name, cwd,
+         task: (if ($title | length) > 0 then $title else .name end),
+         state: $s.state, detail: $s.detail, since,
+         unseen: false,
+         target: (if $has_pane then $t else null end)}
+    )
+    | sort_by(rank, .since)'
+}
+
 # ── Dispatch ─────────────────────────────────────────────────────────────
 main() {
   local cmd="${1:-}"
   [ $# -gt 0 ] && shift
   case "$cmd" in
+    snapshot) cmd_snapshot "$@" ;;
     -h|--help|help|"") usage ;;
     *) die "unknown command: $cmd" ;;
   esac
