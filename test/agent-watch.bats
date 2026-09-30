@@ -390,3 +390,56 @@ setup() { common_setup; }
   [[ "$line" == *"a9 · issue ##9 9 switch-client -t '%9'"* ]]
   [[ "$line" == *"a10 · issue ##10  switch-client -t '%10'"* ]]
 }
+
+# ── toggle / ensure ──────────────────────────────────────────────────────
+
+@test "toggle opens a sidebar when the window has none and records on" {
+  printf 'dev\t@0\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  printf '%%1\t\n%%2\t\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
+  run "$BIN" toggle -c /dev/ttys001
+  [ "$status" -eq 0 ]
+  calls | grep -q '^split-window -fh -l 34 -d -t @0 .*/bin/agent-watch sidebar$'
+  calls | grep -q '^set-option -t dev @agent_watch on$'
+  ! calls | grep -q '^kill-pane'
+}
+
+@test "toggle kills the sidebar when present and records off" {
+  printf 'dev\t@0\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  printf '%%1\t\n%%5\t1\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
+  run "$BIN" toggle -c /dev/ttys001
+  [ "$status" -eq 0 ]
+  calls | grep -q '^kill-pane -t %5$'
+  calls | grep -q '^set-option -t dev @agent_watch off$'
+  ! calls | grep -q '^split-window'
+}
+
+@test "ensure opens a sidebar when absent" {
+  printf 'dev\t@0\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  printf '%%1\t\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
+  run "$BIN" ensure -c /dev/ttys001
+  [ "$status" -eq 0 ]
+  calls | grep -q '^split-window'
+}
+
+@test "ensure does nothing when a sidebar is present" {
+  printf 'dev\t@0\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  printf '%%1\t\n%%5\t1\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
+  run "$BIN" ensure -c /dev/ttys001
+  ! calls | grep -q '^split-window'
+  ! calls | grep -q '^kill-pane'
+}
+
+@test "ensure respects a session that toggled off" {
+  printf 'dev\t@0\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  printf '%%1\t\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
+  printf 'off\n' > "$FAKE_TMUX_DIR/options.out"
+  run "$BIN" ensure -c /dev/ttys001
+  ! calls | grep -q '^split-window'
+}
+
+@test "toggle and ensure pass the client through to display-message" {
+  printf 'dev\t@0\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  printf '%%1\t\n' > "$FAKE_TMUX_DIR/window-panes.tsv"
+  run "$BIN" ensure -c /dev/ttys001
+  calls | grep -q '^display-message -c /dev/ttys001 -p '
+}

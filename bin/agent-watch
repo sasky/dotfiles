@@ -325,6 +325,55 @@ cmd_menu() {
   tmux_c display-menu -T ' agents ' -x C -y C "${args[@]}"
 }
 
+CTX_SESSION=""
+CTX_WINDOW=""
+
+# client_ctx   fills CTX_SESSION and CTX_WINDOW for the client's current window
+client_ctx() {
+  local out width
+  out=$(tmux_c display-message -p "#{session_name}${TAB}#{window_id}${TAB}#{window_width}") \
+    || die "cannot query tmux client"
+  IFS="$TAB" read -r CTX_SESSION CTX_WINDOW width <<<"$out"
+  [ -n "${CTX_SESSION:-}" ] && [ -n "${CTX_WINDOW:-}" ] || die "cannot resolve the current window"
+  : "$width"
+}
+
+# find_sidebar   prints the sidebar pane id in CTX_WINDOW, or nothing
+find_sidebar() {
+  "$AW_TMUX" list-panes -t "$CTX_WINDOW" -F "#{pane_id}${TAB}#{@agent_watch_sidebar}" 2>/dev/null \
+    | awk -F '\t' '$2 == "1" { print $1; exit }'
+}
+
+open_sidebar() {
+  "$AW_TMUX" split-window -fh -l "$AW_WIDTH" -d -t "$CTX_WINDOW" "$AW_SELF sidebar"
+}
+
+# toggle [-c client]
+cmd_toggle() {
+  local sb
+  parse_client "$@"
+  client_ctx
+  sb=$(find_sidebar)
+  if [ -n "$sb" ]; then
+    "$AW_TMUX" kill-pane -t "$sb"
+    "$AW_TMUX" set-option -t "$CTX_SESSION" @agent_watch off
+  else
+    open_sidebar
+    "$AW_TMUX" set-option -t "$CTX_SESSION" @agent_watch on
+  fi
+}
+
+# ensure [-c client]   open the sidebar unless present or the session opted out
+cmd_ensure() {
+  local opt
+  parse_client "$@"
+  client_ctx
+  opt=$("$AW_TMUX" show-options -t "$CTX_SESSION" -qv @agent_watch 2>/dev/null || true)
+  [ "$opt" = "off" ] && return 0
+  [ -n "$(find_sidebar)" ] && return 0
+  open_sidebar
+}
+
 # ── Dispatch ─────────────────────────────────────────────────────────────
 main() {
   local cmd="${1:-}"
@@ -335,6 +384,8 @@ main() {
     render) cmd_render "$@" ;;
     sidebar) cmd_sidebar "$@" ;;
     menu) cmd_menu "$@" ;;
+    toggle) cmd_toggle "$@" ;;
+    ensure) cmd_ensure "$@" ;;
     -h|--help|help|"") usage ;;
     *) die "unknown command: $cmd" ;;
   esac
