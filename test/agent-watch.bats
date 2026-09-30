@@ -250,3 +250,63 @@ setup() { common_setup; }
   run "$BIN" brief
   [ "$output" = "#[fg=#3c4048]● 1#[fg=default]" ]
 }
+
+# ── render ───────────────────────────────────────────────────────────────
+
+@test "render with no agents prints header, no-agents line and footer" {
+  run bash -c "echo '[]' | '$BIN' render --plain --width 34"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "AGENTS" ]
+  [ "${lines[1]}" = "no agents" ]
+  [ "${lines[2]}" = "C-a a jump · C-a b hide" ]
+}
+
+@test "render draws a four-line card with number, state, detail and age" {
+  snap='[{"provider":"claude","id":"1","session_id":"s","name":"tsb-drupal-f4","cwd":"/x",
+          "task":"Tmux side panel for AI agent progress","state":"needs_you","detail":"input needed",
+          "since":1000,"unseen":false,"target":{"session":"dev","window":"@0","pane":"%1"}}]'
+  run bash -c "echo '$snap' | '$BIN' render --plain --width 34 --now 1130"
+  [ "${lines[0]}" = "AGENTS  1 needs you" ]
+  [ "${lines[1]}" = "1 ● needs you · input needed · 2m" ]
+  [ "${lines[2]}" = "  tsb-drupal-f4" ]
+  [ "${lines[3]}" = "  Tmux side panel for AI agent" ]
+  [ "${lines[4]}" = "  progress" ]
+  [ "${lines[5]}" = "C-a a jump · C-a b hide" ]
+}
+
+@test "render omits the detail separator when detail is empty and formats ages" {
+  snap='[{"provider":"claude","id":"1","session_id":"s","name":"a","cwd":"/x","task":"t",
+          "state":"working","detail":"","since":1000,"unseen":false,"target":null},
+         {"provider":"claude","id":"2","session_id":"s","name":"b","cwd":"/x","task":"t",
+          "state":"ready","detail":"","since":0,"unseen":true,"target":null}]'
+  run bash -c "echo '$snap' | '$BIN' render --plain --width 34 --now 1045"
+  [ "${lines[0]}" = "AGENTS  1 ready · 1 working" ]
+  [ "${lines[1]}" = "1 ● working · 45s" ]
+  [ "${lines[4]}" = "2 ● ready · 17m" ]
+}
+
+@test "render truncates a long task to two lines with an ellipsis" {
+  snap='[{"provider":"claude","id":"1","session_id":"s","name":"a","cwd":"/x",
+          "task":"one two three four five six seven eight nine ten eleven twelve thirteen fourteen",
+          "state":"working","detail":"","since":0,"unseen":false,"target":null}]'
+  run bash -c "echo '$snap' | '$BIN' render --plain --width 34 --now 0"
+  [ "${lines[3]}" = "  one two three four five six" ]
+  [ "${lines[4]}" = "  seven eight nine ten eleven twe…" ]
+  [ "${lines[5]}" = "C-a a jump · C-a b hide" ]
+}
+
+@test "render below 24 columns collapses cards to one line" {
+  snap='[{"provider":"claude","id":"1","session_id":"s","name":"tsb-drupal-f4","cwd":"/x","task":"t",
+          "state":"working","detail":"","since":0,"unseen":false,"target":null}]'
+  run bash -c "echo '$snap' | '$BIN' render --plain --width 20 --now 0"
+  [ "${lines[1]}" = "1 ● tsb-drupal-f4" ]
+  [ "${lines[2]}" = "C-a a jump · C-a b h" ]
+}
+
+@test "render without --plain wraps lines in colour and clear-to-eol" {
+  snap='[{"provider":"claude","id":"1","session_id":"s","name":"a","cwd":"/x","task":"t",
+          "state":"needs_you","detail":"","since":0,"unseen":false,"target":null}]'
+  run bash -c "echo '$snap' | '$BIN' render --width 34 --now 0 | sed -n 2p | /bin/cat -v"
+  [[ "$output" == '^[[38;2;255;110;94m1 '* ]]
+  [[ "$output" == *'^[[0m^[[K' ]]
+}

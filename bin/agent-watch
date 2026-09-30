@@ -149,6 +149,82 @@ cmd_brief() {
     | if length == 0 then "" else join(" ") + "#[fg=default]" end'
 }
 
+# '#rrggbb' -> truecolor foreground SGR
+sgr_hex() {
+  local h="${1#\#}"
+  printf '\033[38;2;%d;%d;%dm' "0x${h:0:2}" "0x${h:2:2}" "0x${h:4:2}"
+}
+
+# kind -> SGR prefix for a rendered line
+sgr_kind() {
+  case "$1" in
+    need) sgr_hex "$C_NEED" ;;
+    work) sgr_hex "$C_WORK" ;;
+    rnew) sgr_hex "$C_READY_NEW" ;;
+    rold) sgr_hex "$C_READY" ;;
+    dim)  sgr_hex "$C_DIM" ;;
+    head) printf '\033[1m' ;;
+    *)    : ;;
+  esac
+}
+
+# render [--width N] [--plain] [--now EPOCH]  (snapshot JSON on stdin)
+cmd_render() {
+  local w="$AW_WIDTH" plain=0 now kind text
+  now=$(date +%s)
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --width) w="$2"; shift 2 ;;
+      --plain) plain=1; shift ;;
+      --now)   now="$2"; shift 2 ;;
+      *) die "render: unknown option $1" ;;
+    esac
+  done
+  jq -r --argjson w "$w" --argjson now "$now" "$AW_JQ_DEFS"'
+    def ago:
+      ([$now - .since, 0] | max) as $d
+      | if $d < 60 then "\($d)s"
+        elif $d < 3600 then "\($d / 60 | floor)m"
+        else "\($d / 3600 | floor)h\((($d % 3600) / 60) | floor)m" end;
+    def kind:
+      if .state == "needs_you" then "need"
+      elif .state == "working" then "work"
+      elif .unseen then "rnew" else "rold" end;
+    def clip($n): if length > $n then .[0:$n - 1] + "…" else . end;
+    def wrap($n):
+      (split(" ") | reduce .[] as $wd ([""];
+        if (.[-1] | length) == 0 then .[:-1] + [$wd]
+        elif ((.[-1] | length) + 1 + ($wd | length)) <= $n then .[:-1] + [.[-1] + " " + $wd]
+        else . + [$wd] end)) | map(clip($n));
+    def two_lines($n):
+      wrap($n) as $ls
+      | if ($ls | length) > 2 then [$ls[0], (($ls[1:] | join(" ")) | .[0:$n - 1] + "…")] else $ls end;
+    (map(select(.state == "needs_you")) | length) as $n
+    | (map(select(.state == "ready")) | length) as $r
+    | (map(select(.state == "working")) | length) as $wk
+    | ([ (if $n > 0 then "\($n) needs you" else empty end),
+         (if $r > 0 then "\($r) ready" else empty end),
+         (if $wk > 0 then "\($wk) working" else empty end) ] | join(" · ")) as $counts
+    | ["head\tAGENTS" + (if $counts == "" then "" else "  " + $counts end)]
+      + (if length == 0 then ["dim\tno agents"]
+         elif $w < 24 then [ to_entries[] | "\(.value | kind)\t\(.key + 1) ● \(.value.name)" ]
+         else [ to_entries[] | .key as $i | .value
+                | "\(kind)\t\($i + 1) ● \(word)\(if .detail != "" then " · " + .detail else "" end) · \(ago)",
+                  "plain\t  \(.name)",
+                  (.task | two_lines($w - 2) | .[] | "dim\t  " + .) ]
+         end)
+      + ["dim\tC-a a jump · C-a b hide"]
+    | .[]
+    | (split("\t") | .[0] + "\t" + (.[1] | .[0:$w]))' \
+  | while IFS="$TAB" read -r kind text; do
+      if [ "$plain" = 1 ]; then
+        printf '%s\n' "$text"
+      else
+        printf '%s%s\033[0m\033[K\n' "$(sgr_kind "$kind")" "$text"
+      fi
+    done
+}
+
 # ── Dispatch ─────────────────────────────────────────────────────────────
 main() {
   local cmd="${1:-}"
@@ -156,6 +232,7 @@ main() {
   case "$cmd" in
     snapshot) cmd_snapshot "$@" ;;
     brief) cmd_brief "$@" ;;
+    render) cmd_render "$@" ;;
     -h|--help|help|"") usage ;;
     *) die "unknown command: $cmd" ;;
   esac
