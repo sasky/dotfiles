@@ -225,6 +225,53 @@ cmd_render() {
     done
 }
 
+# Keep the sidebar pane at AW_WIDTH, but only when the window is wide enough
+# that a fixed-width pane can't fight the user for space.
+# Records the pane's width in PANE_COLS: tmux is the authority, since tput
+# reads the size from stdout or stderr and both may be redirected here.
+PANE_COLS=""
+fix_width() {
+  [ -n "${TMUX_PANE:-}" ] || return 0
+  local out pw ww
+  out=$("$AW_TMUX" display-message -p -t "$TMUX_PANE" "#{pane_width}${TAB}#{window_width}" 2>/dev/null) || return 0
+  IFS="$TAB" read -r pw ww <<<"$out"
+  [ -n "${pw:-}" ] && [ -n "${ww:-}" ] || return 0
+  PANE_COLS="$pw"
+  if [ "$pw" != "$AW_WIDTH" ] && [ "$ww" -gt 80 ]; then
+    "$AW_TMUX" resize-pane -t "$TMUX_PANE" -x "$AW_WIDTH" 2>/dev/null || true
+    PANE_COLS="$AW_WIDTH"
+  fi
+}
+
+# sidebar [--once]   run inside a tmux pane; --once draws one frame and exits
+cmd_sidebar() {
+  local once=0 cols sleep_pid=""
+  [ "${1:-}" = "--once" ] && once=1
+  if [ -n "${TMUX_PANE:-}" ]; then
+    "$AW_TMUX" set-option -p -t "$TMUX_PANE" @agent_watch_sidebar 1 2>/dev/null || true
+  fi
+  if [ "$once" = 0 ]; then
+    trap 'printf "\033[?25h\033[0m"' EXIT
+    trap 'exit 0' INT TERM HUP
+    trap 'kill "${sleep_pid:-}" 2>/dev/null || true' WINCH
+    printf '\033[?25l'
+  fi
+  while :; do
+    fix_width
+    cols="${PANE_COLS:-$(tput cols 2>/dev/null || printf '%s' "$AW_WIDTH")}"
+    [ "$once" = 0 ] && printf '\033[H'
+    if [ "$once" = 1 ]; then
+      cmd_snapshot | cmd_render --plain --width "$cols"
+      break
+    fi
+    cmd_snapshot | cmd_render --width "$cols"
+    printf '\033[J'
+    sleep "$AW_INTERVAL" &
+    sleep_pid=$!
+    wait "$sleep_pid" 2>/dev/null || true
+  done
+}
+
 # ── Dispatch ─────────────────────────────────────────────────────────────
 main() {
   local cmd="${1:-}"
@@ -233,6 +280,7 @@ main() {
     snapshot) cmd_snapshot "$@" ;;
     brief) cmd_brief "$@" ;;
     render) cmd_render "$@" ;;
+    sidebar) cmd_sidebar "$@" ;;
     -h|--help|help|"") usage ;;
     *) die "unknown command: $cmd" ;;
   esac

@@ -310,3 +310,42 @@ setup() { common_setup; }
   [[ "$output" == '^[[38;2;255;110;94m1 '* ]]
   [[ "$output" == *'^[[0m^[[K' ]]
 }
+
+# ── sidebar ──────────────────────────────────────────────────────────────
+
+@test "sidebar --once marks its pane and draws a frame" {
+  printf '34\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  run "$BIN" sidebar --once
+  [ "$status" -eq 0 ]
+  calls | grep -q '^set-option -p -t %9 @agent_watch_sidebar 1$'
+  [[ "$output" == *"AGENTS"* ]]
+  [[ "$output" == *"no agents"* ]]
+}
+
+@test "sidebar --once resizes its pane to the configured width in a wide window" {
+  printf '80\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  run "$BIN" sidebar --once
+  calls | grep -q '^resize-pane -t %9 -x 34$'
+}
+
+@test "sidebar --once does not resize when the window is 80 columns or narrower" {
+  printf '20\t80\n' > "$FAKE_TMUX_DIR/display.out"
+  run "$BIN" sidebar --once
+  ! calls | grep -q '^resize-pane'
+}
+
+@test "sidebar --once does not resize when already at width" {
+  printf '34\t269\n' > "$FAKE_TMUX_DIR/display.out"
+  run "$BIN" sidebar --once
+  ! calls | grep -q '^resize-pane'
+}
+
+@test "sidebar --once renders at the pane width tmux reports, not the terminal default" {
+  printf '20\t60\n' > "$FAKE_TMUX_DIR/display.out"
+  session 101 busy "" "dev:@0.%1" 1000000 "tsb-drupal-f4"
+  pane %1 "✳ a long task title that would wrap"
+  run "$BIN" sidebar --once
+  [ "$status" -eq 0 ]
+  [ "${lines[1]}" = "1 ● tsb-drupal-f4" ]
+  [ "${lines[2]}" = "C-a a jump · C-a b h" ]
+}
