@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Fake tmux for agent-watch tests.
+# Logs every call to $FAKE_TMUX_DIR/calls.log and answers read-only queries
+# from fixture files in $FAKE_TMUX_DIR:
+#   list-panes -a      -> panes.tsv         (pane_id<TAB>pane_title)
+#   list-panes -t ...  -> window-panes.tsv  (pane_id<TAB>marker)
+#   list-clients       -> clients.txt       (one pane_id per line)
+#   display-message -p -> display.out
+#   show-options       -> options.out
+# Every other command is logged and succeeds silently.
+set -u
+dir="${FAKE_TMUX_DIR:?FAKE_TMUX_DIR must be set}"
+printf '%s\n' "$*" >> "$dir/calls.log"
+case "${1:-}" in
+  list-panes)
+    if [ "${2:-}" = "-a" ]; then
+      cat "$dir/panes.tsv" 2>/dev/null
+    else
+      cat "$dir/window-panes.tsv" 2>/dev/null
+    fi
+    ;;
+  list-clients) cat "$dir/clients.txt" 2>/dev/null ;;
+  display-message)
+    case " $* " in *" -p "*) cat "$dir/display.out" 2>/dev/null ;; esac
+    ;;
+  show-options) cat "$dir/options.out" 2>/dev/null ;;
+  *) : ;;
+esac
+exit 0

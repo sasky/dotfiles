@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# agent-watch — tmux sidebar, status segment and jump menu for AI agent sessions.
+#
+#   agent-watch snapshot          JSON array of live agents, sorted
+#   agent-watch brief             one-line tmux status segment
+#   agent-watch sidebar [--once]  run the sidebar in the current pane
+#   agent-watch render [opts]     render a snapshot from stdin (used by sidebar and tests)
+#   agent-watch menu [-c client]  jump menu
+#   agent-watch toggle [-c client]
+#   agent-watch ensure [-c client]
+#
+# See docs/agent-watch.md. Runs on bash 3.2; needs jq and tmux.
+set -euo pipefail
+
+# ── Config (all overridable) ─────────────────────────────────────────────
+AW_SESSIONS_DIR="${AGENT_WATCH_SESSIONS_DIR:-$HOME/.claude/sessions}"
+AW_STATE_DIR="${AGENT_WATCH_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/agent-watch}"
+AW_TMUX="${AGENT_WATCH_TMUX:-tmux}"
+AW_WIDTH="${AGENT_WATCH_WIDTH:-34}"
+AW_INTERVAL="${AGENT_WATCH_INTERVAL:-2}"
+AW_SELF="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
+
+C_NEED='#ff6e5e'      # needs_you
+C_WORK='#5ef1ff'      # working
+C_READY_NEW='#5eff6c' # ready, unseen
+C_READY='#3c4048'     # ready, seen
+C_DIM='#3c4048'
+
+usage() {
+  sed -n '2,/^set -euo/{ /^set -euo/d; s/^# \{0,1\}//; p; }' "$0"
+}
+
+die() { printf 'agent-watch: %s\n' "$*" >&2; exit 1; }
+
+need_jq() { command -v jq >/dev/null 2>&1 || die "jq is required (brew install jq)"; }
+
+# ── Dispatch ─────────────────────────────────────────────────────────────
+main() {
+  local cmd="${1:-}"
+  [ $# -gt 0 ] && shift
+  case "$cmd" in
+    -h|--help|help|"") usage ;;
+    *) die "unknown command: $cmd" ;;
+  esac
+}
+
+need_jq
+main "$@"

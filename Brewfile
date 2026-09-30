@@ -33,6 +33,10 @@ brew "git-filter-repo"
 # Nvim ecosystem
 brew "tree-sitter@0.25" # nvim-treesitter (main branch) needs the CLI
 
+# Shell script tooling (bin/agent-watch tests and lint)
+brew "bats-core"
+brew "shellcheck"
+
 # Runtimes / version manager (mise only — no fnm/nvm/nodenv/pyenv)
 brew "mise"
 brew "dotnet" # DOTNET_ROOT is set in zsh/.zshrc
