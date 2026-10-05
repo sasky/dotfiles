@@ -145,6 +145,8 @@ hardware, less installed = faster and cooler.
 **How:**
 ```sh
 cd ~/dotfiles && stow -t ~ zsh tmux nvim lazygit git ghostty
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+~/.tmux/plugins/tpm/bin/install_plugins
 ```
 Open a new terminal, run `nvim` once to let plugins install, then `:MasonInstall typos-lsp`.
 
@@ -153,6 +155,8 @@ sasky (`cam@sasky.nz`) with a cdogcatch override only under `~/Sites/` — this 
 has no `~/Sites`, so every commit is sasky with zero setup. `typos-lsp` is a Mason
 package (not in dotfiles), so it's a one-time manual install; nvim's spell-checking
 stays silently off without it.
+TPM and its plugins live in `~/.tmux/plugins`, outside the repo, so they need the
+one-time clone above. Without TPM, every tmux config load errors and no plugins run.
 
 ---
 
