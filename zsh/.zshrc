@@ -37,7 +37,8 @@ else
 fi
 # End of lines added by compinstall
 eval "$(mise activate zsh)"
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+# fzf key bindings (Ctrl+R history, Ctrl+T files, Alt+C cd) and completion
+command -v fzf >/dev/null && source <(fzf --zsh)
 alias ra='brew services restart httpd'
 # https://stackoverflow.com/questions/33109315/unknown-unsupported-storage-engine-innodb
 alias rmysql='brew services restart mariadb'
