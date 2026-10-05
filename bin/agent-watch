@@ -1,0 +1,420 @@
+#!/usr/bin/env bash
+# agent-watch — tmux sidebar, status segment and jump menu for AI agent sessions.
+#
+#   agent-watch snapshot          JSON array of live agents, sorted
+#   agent-watch brief             one-line tmux status segment
+#   agent-watch sidebar [--once]  run the sidebar in the current pane
+#   agent-watch render [opts]     render a snapshot from stdin (used by sidebar and tests)
+#   agent-watch menu [-c client]  jump menu
+#   agent-watch toggle [-c client]
+#   agent-watch ensure [-c client]
+#
+# See docs/agent-watch.md. Runs on bash 3.2; needs jq and tmux.
+set -euo pipefail
+
+# ── Config (all overridable) ─────────────────────────────────────────────
+AW_SESSIONS_DIR="${AGENT_WATCH_SESSIONS_DIR:-$HOME/.claude/sessions}"
+AW_STATE_DIR="${AGENT_WATCH_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/agent-watch}"
+AW_TMUX="${AGENT_WATCH_TMUX:-tmux}"
+AW_WIDTH="${AGENT_WATCH_WIDTH:-34}"
+AW_INTERVAL="${AGENT_WATCH_INTERVAL:-2}"
+AW_SELF="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
+
+C_NEED='#ff6e5e'      # needs_you
+C_WORK='#5ef1ff'      # working
+C_READY_NEW='#5eff6c' # ready, unseen
+C_READY='#3c4048'     # ready, seen
+C_DIM='#3c4048'
+
+usage() {
+  sed -n '2,/^set -euo/{ /^set -euo/d; s/^# \{0,1\}//; p; }' "$0"
+}
+
+die() { printf 'agent-watch: %s\n' "$*" >&2; exit 1; }
+
+need_jq() { command -v jq >/dev/null 2>&1 || die "jq is required (brew install jq)"; }
+
+# ── Shared jq definitions ────────────────────────────────────────────────
+# Prepended to every jq program so views and collector agree on the rules.
+AW_JQ_DEFS='
+  def parse_target:
+    capture("^(?<session>[^:]+):(?<window>@[0-9]+)\\.(?<pane>%[0-9]+)$") // null;
+  def strip_glyph: sub("^[^\\p{L}\\p{N}~/.]+"; "");
+  def map_state:
+    if   .raw_status == "busy"    then {state: "working",   detail: ""}
+    elif .raw_status == "shell"   then {state: "working",   detail: "background script"}
+    elif .raw_status == "waiting" then {state: "needs_you", detail: (if .waiting_for == "" then "needs input" else .waiting_for end)}
+    elif .raw_status == "idle"    then {state: "ready",     detail: ""}
+    else                               {state: "working",   detail: .raw_status} end;
+  def rank:
+    if .state == "needs_you" then 0
+    elif .state == "ready" and .unseen then 1
+    elif .state == "working" then 2
+    else 3 end;
+  def word: {needs_you: "needs you", working: "working", ready: "ready"}[.state];
+'
+
+# ── tmux queries ─────────────────────────────────────────────────────────
+TAB=$'\t'
+# pane_id<TAB>pane_title for every pane on the server; empty if no server.
+tmux_panes() { "$AW_TMUX" list-panes -a -F "#{pane_id}${TAB}#{pane_title}" 2>/dev/null || true; }
+# One pane id per attached client: the pane each client is looking at now.
+tmux_client_panes() { "$AW_TMUX" list-clients -F '#{pane_id}' 2>/dev/null || true; }
+
+# ── Providers ────────────────────────────────────────────────────────────
+# A provider prints one raw JSON object per agent with the fields:
+#   provider id session_id name cwd raw_status waiting_for since tmux
+pid_alive() {
+  if [ -n "${AGENT_WATCH_ALIVE_PIDS:-}" ]; then
+    case " $AGENT_WATCH_ALIVE_PIDS " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+  fi
+  kill -0 "$1" 2>/dev/null
+}
+
+provider_claude() {
+  local f pid
+  [ -d "$AW_SESSIONS_DIR" ] || return 0
+  for f in "$AW_SESSIONS_DIR"/*.json; do
+    [ -e "$f" ] || continue
+    pid=$(jq -r '.pid // empty' "$f" 2>/dev/null) || continue
+    [ -n "$pid" ] || continue
+    pid_alive "$pid" || continue
+    jq -c '{
+      provider: "claude",
+      id: (.pid | tostring),
+      session_id: (.sessionId // ""),
+      name: (.name // ("claude-" + (.pid | tostring))),
+      cwd: (.cwd // ""),
+      raw_status: (.status // "unknown"),
+      waiting_for: (.waitingFor // ""),
+      since: (((.statusUpdatedAt // .updatedAt // .startedAt // 0) / 1000) | floor),
+      tmux: (.tmux // "")
+    }' "$f" 2>/dev/null || true
+  done
+}
+
+# ── Collector ────────────────────────────────────────────────────────────
+cmd_snapshot() {
+  local raw panes_json clients_json now seen_file tmp out
+  now=$(date +%s)
+  mkdir -p "$AW_STATE_DIR"
+  seen_file="$AW_STATE_DIR/seen.json"
+  # Our own file, but reset it rather than fail if it was ever left corrupt.
+  jq -e 'type == "object"' "$seen_file" >/dev/null 2>&1 || printf '{}\n' > "$seen_file"
+
+  raw=$(provider_claude)
+  panes_json=$(tmux_panes | jq -R -s -c '
+    split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: (.[1] // "")}) | from_entries')
+  clients_json=$(tmux_client_panes | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+  out=$(printf '%s\n' "$raw" | jq -s -c \
+    --argjson now "$now" --argjson panes "$panes_json" --argjson clients "$clients_json" \
+    --slurpfile seenfile "$seen_file" "$AW_JQ_DEFS"'
+    ($seenfile[0] // {}) as $seen0
+    | map(
+        (.tmux | parse_target) as $t
+        | (if $t == null then false else ($panes | has($t.pane)) end) as $has_pane
+        | (if $has_pane then ($panes[$t.pane] | strip_glyph) else "" end) as $title
+        | map_state as $s
+        | "\(.provider):\(.id)" as $key
+        | (if $has_pane then (($clients | index($t.pane)) != null) else false end) as $viewed
+        | (if $viewed then $now else ($seen0[$key] // null) end) as $seen_at
+        | {provider, id, session_id, name, cwd,
+           task: (if ($title | length) > 0 then $title else .name end),
+           state: $s.state, detail: $s.detail, since,
+           unseen: ($s.state == "ready" and ($seen_at == null or $seen_at < .since)),
+           target: (if $has_pane then $t else null end),
+           _key: $key, _seen: $seen_at}
+      )
+    | { seen: (map(select(._seen != null) | {key: ._key, value: ._seen}) | from_entries),
+        snapshot: (map(del(._key, ._seen)) | sort_by(rank, .since)) }')
+
+  tmp=$(mktemp "$AW_STATE_DIR/seen.XXXXXX")
+  printf '%s\n' "$out" | jq -c '.seen' > "$tmp" && mv "$tmp" "$seen_file"
+  printf '%s\n' "$out" | jq -c '.snapshot'
+}
+
+# ── Views ────────────────────────────────────────────────────────────────
+cmd_brief() {
+  cmd_snapshot | jq -r \
+    --arg need "$C_NEED" --arg work "$C_WORK" --arg rnew "$C_READY_NEW" --arg rold "$C_READY" '
+    def seg(c; n): "#[fg=\(c)]● \(n)";
+    (map(select(.state == "needs_you")) | length) as $n
+    | (map(select(.state == "ready" and .unseen)) | length) as $ru
+    | (map(select(.state == "ready" and (.unseen | not))) | length) as $rs
+    | (map(select(.state == "working")) | length) as $w
+    | [ (if $n > 0 then seg($need; $n) else empty end),
+        (if ($ru + $rs) > 0 then seg((if $ru > 0 then $rnew else $rold end); $ru + $rs) else empty end),
+        (if $w > 0 then seg($work; $w) else empty end) ]
+    | if length == 0 then "" else join(" ") + "#[fg=default]" end'
+}
+
+# '#rrggbb' -> truecolor foreground SGR
+sgr_hex() {
+  local h="${1#\#}"
+  printf '\033[38;2;%d;%d;%dm' "0x${h:0:2}" "0x${h:2:2}" "0x${h:4:2}"
+}
+
+# kind -> SGR prefix for a rendered line
+sgr_kind() {
+  case "$1" in
+    need) sgr_hex "$C_NEED" ;;
+    work) sgr_hex "$C_WORK" ;;
+    rnew) sgr_hex "$C_READY_NEW" ;;
+    rold) sgr_hex "$C_READY" ;;
+    dim)  sgr_hex "$C_DIM" ;;
+    head) printf '\033[1m' ;;
+    *)    : ;;
+  esac
+}
+
+# render [--width N] [--plain] [--now EPOCH]  (snapshot JSON on stdin)
+cmd_render() {
+  local w="$AW_WIDTH" plain=0 now kind text
+  now=$(date +%s)
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --width) w="$2"; shift 2 ;;
+      --plain) plain=1; shift ;;
+      --now)   now="$2"; shift 2 ;;
+      *) die "render: unknown option $1" ;;
+    esac
+  done
+  jq -r --argjson w "$w" --argjson now "$now" "$AW_JQ_DEFS"'
+    def ago:
+      ([$now - .since, 0] | max) as $d
+      | if $d < 60 then "\($d)s"
+        elif $d < 3600 then "\($d / 60 | floor)m"
+        else "\($d / 3600 | floor)h\((($d % 3600) / 60) | floor)m" end;
+    def kind:
+      if .state == "needs_you" then "need"
+      elif .state == "working" then "work"
+      elif .unseen then "rnew" else "rold" end;
+    def clip($n): if length > $n then .[0:$n - 1] + "…" else . end;
+    def wrap($n):
+      (split(" ") | reduce .[] as $wd ([""];
+        if (.[-1] | length) == 0 then .[:-1] + [$wd]
+        elif ((.[-1] | length) + 1 + ($wd | length)) <= $n then .[:-1] + [.[-1] + " " + $wd]
+        else . + [$wd] end)) | map(clip($n));
+    def two_lines($n):
+      wrap($n) as $ls
+      | if ($ls | length) > 2 then [$ls[0], (($ls[1:] | join(" ")) | .[0:$n - 1] + "…")] else $ls end;
+    def short_detail:
+      {"permission prompt": "permission", "input needed": "input", "background script": "bg script"}[.] // .;
+    (map(select(.state == "needs_you")) | length) as $n
+    | (map(select(.state == "ready")) | length) as $r
+    | (map(select(.state == "working")) | length) as $wk
+    | ([ (if $n > 0 then "\($n) needs you" else empty end),
+         (if $r > 0 then "\($r) ready" else empty end),
+         (if $wk > 0 then "\($wk) working" else empty end) ] | join(" · ")) as $counts
+    | ["head\t" + (if $counts == "" then "AGENTS" else $counts end)]
+      + (if length == 0 then ["dim\tno agents"]
+         elif $w < 24 then [ to_entries[] | "\(.value | kind)\t\(.key + 1) ● \(.value.name)" ]
+         else [ to_entries[] | .key as $i | .value
+                | "\(kind)\t\($i + 1) ● \(word) · \(ago)\(if .detail != "" then " · " + (.detail | short_detail) else "" end)",
+                  "plain\t  \(.name)",
+                  (.task | two_lines($w - 2) | .[] | "dim\t  " + .) ]
+         end)
+      + ["dim\tC-a a jump · C-a b hide"]
+    | .[]
+    | (split("\t") | .[0] + "\t" + (.[1] | clip($w)))' \
+  | while IFS="$TAB" read -r kind text; do
+      if [ "$plain" = 1 ]; then
+        printf '%s\n' "$text"
+      else
+        printf '%s%s\033[0m\033[K\n' "$(sgr_kind "$kind")" "$text"
+      fi
+    done
+}
+
+# Keep the sidebar pane at AW_WIDTH, but only when the window is wide enough
+# that a fixed-width pane can't fight the user for space.
+# Records the pane's width in PANE_COLS: tmux is the authority, since tput
+# reads the size from stdout or stderr and both may be redirected here.
+PANE_COLS=""
+fix_width() {
+  [ -n "${TMUX_PANE:-}" ] || return 0
+  local out pw ww
+  out=$("$AW_TMUX" display-message -p -t "$TMUX_PANE" "#{pane_width}${TAB}#{window_width}" 2>/dev/null) || return 0
+  IFS="$TAB" read -r pw ww <<<"$out"
+  [ -n "${pw:-}" ] && [ -n "${ww:-}" ] || return 0
+  PANE_COLS="$pw"
+  if [ "$pw" != "$AW_WIDTH" ] && [ "$ww" -gt 80 ]; then
+    "$AW_TMUX" resize-pane -t "$TMUX_PANE" -x "$AW_WIDTH" 2>/dev/null || true
+    PANE_COLS="$AW_WIDTH"
+  fi
+}
+
+# sidebar [--once]   run inside a tmux pane; --once draws one frame and exits
+cmd_sidebar() {
+  local once=0 cols sleep_pid=""
+  [ "${1:-}" = "--once" ] && once=1
+  if [ -n "${TMUX_PANE:-}" ]; then
+    "$AW_TMUX" set-option -p -t "$TMUX_PANE" @agent_watch_sidebar 1 2>/dev/null || true
+  fi
+  if [ "$once" = 0 ]; then
+    trap 'printf "\033[?25h\033[0m"' EXIT
+    trap 'exit 0' INT TERM HUP
+    trap 'kill "${sleep_pid:-}" 2>/dev/null || true' WINCH
+    printf '\033[?25l'
+  fi
+  while :; do
+    fix_width
+    cols="${PANE_COLS:-$(tput cols 2>/dev/null || printf '%s' "$AW_WIDTH")}"
+    [ "$once" = 0 ] && printf '\033[H'
+    if [ "$once" = 1 ]; then
+      cmd_snapshot | cmd_render --plain --width "$cols"
+      break
+    fi
+    cmd_snapshot | cmd_render --width "$cols"
+    printf '\033[J'
+    sleep "$AW_INTERVAL" &
+    sleep_pid=$!
+    wait "$sleep_pid" 2>/dev/null || true
+  done
+}
+
+# ── tmux glue ────────────────────────────────────────────────────────────
+CLIENT=""
+
+# parse_client ARGS...   sets CLIENT from -c <client>, ignores anything else
+parse_client() {
+  CLIENT=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -c) CLIENT="${2:-}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+}
+
+# tmux_c SUBCOMMAND ARGS...   runs tmux with -c "$CLIENT" inserted when set
+tmux_c() {
+  local sub="$1"
+  shift
+  if [ -n "$CLIENT" ]; then
+    "$AW_TMUX" "$sub" -c "$CLIENT" "$@"
+  else
+    "$AW_TMUX" "$sub" "$@"
+  fi
+}
+
+# menu [-c client]   display-menu of agents; number keys jump
+cmd_menu() {
+  local snap label key cmd
+  local -a args
+  args=()
+  parse_client "$@"
+  snap=$(cmd_snapshot)
+  if [ "$(printf '%s\n' "$snap" | jq 'length')" -eq 0 ]; then
+    tmux_c display-message "agent-watch: no agents"
+    return 0
+  fi
+  # Fields are joined with US (0x1f): a whitespace IFS such as tab would
+  # collapse an empty key field and shift the command into its place.
+  while IFS=$'\x1f' read -r label key cmd; do
+    args+=("$label" "$key" "$cmd")
+  done < <(printf '%s\n' "$snap" | jq -r \
+    --arg need "$C_NEED" --arg work "$C_WORK" --arg rnew "$C_READY_NEW" --arg rold "$C_READY" \
+    "$AW_JQ_DEFS"'
+    to_entries[] | .key as $i | .value
+    | ({needs_you: $need, working: $work, ready: (if .unseen then $rnew else $rold end)}[.state]) as $c
+    | ("#[fg=\($c)]●#[default] \(word)  \(.name | gsub("#"; "##")) · \(.task | .[0:40] | gsub("#"; "##"))") as $label
+    | [ (if .target == null then "-" else "" end) + $label,
+        (if .target != null and $i < 9 then ($i + 1 | tostring) else "" end),
+        (if .target != null then "switch-client -t '"'"'\(.target.pane)'"'"'" else "" end) ]
+    | join("\u001f")')
+  tmux_c display-menu -T ' agents ' -x C -y C "${args[@]}"
+}
+
+CTX_SESSION=""
+CTX_WINDOW=""
+
+# client_ctx   fills CTX_SESSION and CTX_WINDOW for the client's current window
+client_ctx() {
+  local out width
+  out=$(tmux_c display-message -p "#{session_name}${TAB}#{window_id}${TAB}#{window_width}") \
+    || die "cannot query tmux client"
+  IFS="$TAB" read -r CTX_SESSION CTX_WINDOW width <<<"$out"
+  [ -n "${CTX_SESSION:-}" ] && [ -n "${CTX_WINDOW:-}" ] || die "cannot resolve the current window"
+  : "$width"
+}
+
+# find_sidebar   prints the sidebar pane id in CTX_WINDOW, or nothing
+find_sidebar() {
+  "$AW_TMUX" list-panes -t "$CTX_WINDOW" -F "#{pane_id}${TAB}#{@agent_watch_sidebar}" 2>/dev/null \
+    | awk -F '\t' '$2 == "1" { print $1; exit }'
+}
+
+open_sidebar() {
+  "$AW_TMUX" split-window -fh -l "$AW_WIDTH" -d -t "$CTX_WINDOW" "$AW_SELF sidebar"
+}
+
+# Per-window lock so two hook-driven ensures (or a double keypress) can't
+# both pass find_sidebar and both split. mkdir is atomic; macOS has no flock.
+# A lock older than LOCK_STALE_SECS is treated as abandoned.
+LOCK_STALE_SECS=10
+LOCK_DIR=""
+lock_mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+acquire_window_lock() {
+  local now
+  LOCK_DIR="$AW_STATE_DIR/locks/$CTX_WINDOW"
+  mkdir -p "$AW_STATE_DIR/locks"
+  if mkdir "$LOCK_DIR" 2>/dev/null; then return 0; fi
+  now=$(date +%s)
+  if [ $((now - $(lock_mtime "$LOCK_DIR"))) -gt "$LOCK_STALE_SECS" ]; then
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+    mkdir "$LOCK_DIR" 2>/dev/null && return 0
+  fi
+  return 1
+}
+release_window_lock() { [ -n "$LOCK_DIR" ] && rmdir "$LOCK_DIR" 2>/dev/null || true; }
+
+# toggle [-c client]
+cmd_toggle() {
+  local sb
+  parse_client "$@"
+  client_ctx
+  acquire_window_lock || return 0
+  sb=$(find_sidebar)
+  if [ -n "$sb" ]; then
+    "$AW_TMUX" kill-pane -t "$sb"
+    "$AW_TMUX" set-option -t "$CTX_SESSION" @agent_watch off
+  else
+    open_sidebar
+    "$AW_TMUX" set-option -t "$CTX_SESSION" @agent_watch on
+  fi
+  release_window_lock
+}
+
+# ensure [-c client]   open the sidebar unless present or the session opted out
+cmd_ensure() {
+  local opt
+  parse_client "$@"
+  client_ctx
+  opt=$("$AW_TMUX" show-options -t "$CTX_SESSION" -qv @agent_watch 2>/dev/null || true)
+  [ "$opt" = "off" ] && return 0
+  acquire_window_lock || return 0
+  [ -z "$(find_sidebar)" ] && open_sidebar
+  release_window_lock
+}
+
+# ── Dispatch ─────────────────────────────────────────────────────────────
+main() {
+  local cmd="${1:-}"
+  [ $# -gt 0 ] && shift
+  case "$cmd" in
+    snapshot) cmd_snapshot "$@" ;;
+    brief) cmd_brief "$@" ;;
+    render) cmd_render "$@" ;;
+    sidebar) cmd_sidebar "$@" ;;
+    menu) cmd_menu "$@" ;;
+    toggle) cmd_toggle "$@" ;;
+    ensure) cmd_ensure "$@" ;;
+    -h|--help|help|"") usage ;;
+    *) die "unknown command: $cmd" ;;
+  esac
+}
+
+need_jq
+main "$@"
