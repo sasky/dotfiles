@@ -43,6 +43,11 @@ cask "ghostty"
 cask "claude-code"
 cask "raycast"
 
+# Terminal fonts — pick one with bin/ghostty-font
+cask "font-geist-mono-nerd-font"
+cask "font-iosevka-term-nerd-font"
+cask "font-victor-mono-nerd-font"
+
 # Optional hobby/dev extras — uncomment as needed:
 # brew "dasm"                                    # Atari 2600 assembler
 # brew "bacon"; brew "cargo-insta"; brew "cargo-nextest"  # rust helpers (install rust via rustup first)

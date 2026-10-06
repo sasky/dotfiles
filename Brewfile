@@ -66,3 +66,8 @@ cask "orbstack" # Docker runtime — free for personal use; client work needs Pr
 cask "raycast"
 cask "google-drive"
 cask "karabiner-elements"
+
+# Terminal fonts — pick one with bin/ghostty-font
+cask "font-geist-mono-nerd-font"
+cask "font-iosevka-term-nerd-font"
+cask "font-victor-mono-nerd-font"
