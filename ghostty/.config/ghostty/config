@@ -1,3 +1,6 @@
 font-size=16
 macos-option-as-alt = left
 background = #1a1a1a
+
+# Font family and weight live in ./font, written by `ghostty-font` (dotfiles/bin)
+config-file = ?font

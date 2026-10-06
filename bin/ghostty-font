@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# ghostty-font — Switch Ghostty's font and weight, then reload every Ghostty window
+# Usage: ghostty-font                    fzf picker; each row previews live as you move
+#        ghostty-font <font> [weight]    e.g. ghostty-font iosevka light
+#        ghostty-font list               fonts, weights and the current choice
+#
+# Fonts:   default (Ghostty's built-in JetBrains Mono), geist, iosevka, victor
+# Weights: extralight, light, regular (the default), medium
+#
+# Writes ~/.config/ghostty/font, which the main config loads with
+# `config-file = ?font`, then sends SIGUSR2 so running Ghostty reloads in place.
+# The built-in font has no weight choice: Ghostty never applies font-style or
+# font-variation to its embedded JetBrains Mono.
+
+set -euo pipefail
+
+FONT_FILE="${GHOSTTY_FONT_FILE:-$HOME/.config/ghostty/font}"
+GHOSTTY="${GHOSTTY_FONT_GHOSTTY:-ghostty}"
+PKILL="${GHOSTTY_FONT_PKILL:-pkill}"
+
+NAMES=(default geist iosevka victor)
+FAMILIES=("" "GeistMono Nerd Font" "IosevkaTerm Nerd Font" "VictorMono Nerd Font")
+CASKS=("" font-geist-mono-nerd-font font-iosevka-term-nerd-font font-victor-mono-nerd-font)
+NOTES=(
+  "Ghostty's built-in JetBrains Mono"
+  "Geist Mono: clean and modern, a touch wider"
+  "Iosevka Term: slender and narrow, more columns per pane"
+  "Victor Mono: light and crisp, cursive italics"
+)
+WEIGHTS=(extralight light regular medium)
+
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
+
+die() { echo "ghostty-font: $*" >&2; exit 1; }
+
+index_of() {
+  local i
+  for i in "${!NAMES[@]}"; do
+    [[ ${NAMES[$i]} == "$1" ]] && { echo "$i"; return; }
+  done
+  return 1
+}
+
+# Font style name as the font advertises it; empty means Ghostty's default.
+style_for() {
+  case $1 in
+    extralight) echo ExtraLight ;;
+    light) echo Light ;;
+    regular) echo "" ;;
+    medium) echo Medium ;;
+    *) return 1 ;;
+  esac
+}
+
+# Prints "<font> <weight>" from the marker line, or "default regular".
+current() {
+  local line
+  line=$(grep -m1 '^# ghostty-font: ' "$FONT_FILE" 2>/dev/null) || line=""
+  if [[ -n $line ]]; then echo "${line#\# ghostty-font: }"; else echo "default regular"; fi
+}
+
+set_font() {
+  local name="$1" weight="${2:-regular}" i family style
+  i=$(index_of "$name") || die "unknown font '$name' (try: ${NAMES[*]})"
+  style_for "$weight" >/dev/null || die "unknown weight '$weight' (try: ${WEIGHTS[*]})"
+  family=${FAMILIES[$i]}
+
+  if [[ -z $family && $weight != regular ]]; then
+    echo "ghostty-font: the built-in font ignores weight; using regular" >&2
+    weight=regular
+  fi
+  if [[ -n $family ]] && command -v "$GHOSTTY" >/dev/null &&
+    [[ -z $("$GHOSTTY" +list-fonts --family="$family" 2>/dev/null) ]]; then
+    echo "ghostty-font: $family is not installed: brew install --cask ${CASKS[$i]}" >&2
+  fi
+
+  style=$(style_for "$weight")
+  {
+    echo "# Written by ghostty-font (dotfiles/bin). Run it again rather than editing."
+    echo "# ghostty-font: $name $weight"
+    if [[ -n $family ]]; then
+      echo 'font-family = ""'
+      echo "font-family = \"$family\""
+      if [[ -n $style ]]; then
+        # font-style-italic only applies with font-family-italic set alongside it
+        echo "font-style = $style"
+        echo "font-family-italic = \"$family\""
+        echo "font-style-italic = $style Italic"
+      fi
+    fi
+  } > "$FONT_FILE"
+
+  "$PKILL" -USR2 -x ghostty || true
+  echo "Ghostty font: $name $weight"
+}
+
+list() {
+  local cur i w
+  cur=$(current)
+  for i in "${!NAMES[@]}"; do
+    if [[ ${cur%% *} == "${NAMES[$i]}" ]]; then w="*"; else w=" "; fi
+    printf '%s %-8s %s\n' "$w" "${NAMES[$i]}" "${NOTES[$i]}"
+  done
+  echo
+  echo "Weights: ${WEIGHTS[*]}"
+  echo "Current: $cur"
+}
+
+# One "<font> <weight> <note>" row per choice; the built-in font gets one row.
+rows() {
+  local i w
+  for i in "${!NAMES[@]}"; do
+    if [[ -z ${FAMILIES[$i]} ]]; then
+      printf '%-8s %-10s %s\n' "${NAMES[$i]}" regular "${NOTES[$i]}"
+      continue
+    fi
+    for w in "${WEIGHTS[@]}"; do
+      printf '%-8s %-10s %s\n' "${NAMES[$i]}" "$w" "${NOTES[$i]}"
+    done
+  done
+}
+
+pick() {
+  command -v fzf >/dev/null || { list; die "install fzf for the picker, or pass a font name"; }
+  local original pos choice
+  original=$(current)
+  pos=$(rows | awk -v cur="$original" '$1 " " $2 == cur { print NR; exit }')
+
+  # Moving the cursor applies that row, so fzf itself redraws in the font.
+  # Esc puts the original back; Enter keeps the highlighted row.
+  if choice=$(rows | fzf --layout=reverse --height=~20 --no-sort \
+    --prompt='font> ' --header="Move to preview · Enter keeps · Esc restores $original" \
+    --bind "load:pos(${pos:-1})" \
+    --bind "focus:execute-silent('$0' {1} {2})"); then
+    # shellcheck disable=SC2086  # split "<font> <weight> <note>" into words
+    set -- $choice
+    set_font "$1" "$2"
+  else
+    # shellcheck disable=SC2086
+    set_font $original
+  fi
+}
+
+case "${1:-}" in
+  "") pick ;;
+  list) list ;;
+  -h | --help | help) usage ;;
+  *) set_font "$1" "${2:-regular}" ;;
+esac
