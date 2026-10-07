@@ -31,6 +31,29 @@ EOF
   grep -qx 'font-style = Light' "$GHOSTTY_FONT_FILE"
   grep -qx 'font-family-italic = "IosevkaTerm Nerd Font"' "$GHOSTTY_FONT_FILE"
   grep -qx 'font-style-italic = Light Italic' "$GHOSTTY_FONT_FILE"
+  [ -z "$(grep 'bold' "$GHOSTTY_FONT_FILE")" ]
+}
+
+@test "semibold and up moves bold text to the font's heaviest weight" {
+  run "$BIN" geist semibold
+  [ "$status" -eq 0 ]
+  grep -qx 'font-style = SemiBold' "$GHOSTTY_FONT_FILE"
+  grep -qx 'font-family-bold = "GeistMono Nerd Font"' "$GHOSTTY_FONT_FILE"
+  grep -qx 'font-style-bold = Black' "$GHOSTTY_FONT_FILE"
+  grep -qx 'font-style-bold-italic = Black Italic' "$GHOSTTY_FONT_FILE"
+  "$BIN" iosevka bold
+  grep -qx 'font-style-bold = Heavy' "$GHOSTTY_FONT_FILE"
+}
+
+@test "each font accepts only the weights it ships" {
+  run "$BIN" iosevka heavy
+  [ "$status" -eq 0 ]
+  run "$BIN" geist heavy
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"geist has no 'heavy' weight (try: thin "*" black)"* ]]
+  run "$BIN" victor black
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"victor has no 'black' weight"* ]]
 }
 
 @test "the built-in font clears the family and ignores weight" {
@@ -48,6 +71,7 @@ EOF
   run "$BIN" list
   [ "$status" -eq 0 ]
   [[ "$output" == *"* iosevka"* ]]
+  [[ "$output" == *"thin extralight light regular medium semibold bold extrabold heavy"* ]]
   [[ "$output" == *"Current: iosevka extralight"* ]]
 }
 
@@ -68,8 +92,8 @@ EOF
   run "$BIN" comic
   [ "$status" -eq 1 ]
   [[ "$output" == *"unknown font 'comic'"* ]]
-  run "$BIN" geist heavy
+  run "$BIN" geist chunky
   [ "$status" -eq 1 ]
-  [[ "$output" == *"unknown weight 'heavy'"* ]]
+  [[ "$output" == *"geist has no 'chunky' weight"* ]]
   [ ! -e "$GHOSTTY_FONT_FILE" ]
 }

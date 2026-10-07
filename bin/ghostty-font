@@ -5,7 +5,8 @@
 #        ghostty-font list               fonts, weights and the current choice
 #
 # Fonts:   default (Ghostty's built-in JetBrains Mono), geist, iosevka, victor
-# Weights: extralight, light, regular (the default), medium
+# Weights: thin through black, regular by default; `list` shows each font's set.
+#          From semibold up, bold text uses the font's heaviest weight.
 #
 # Writes ~/.config/ghostty/font, which the main config loads with
 # `config-file = ?font`, then sends SIGUSR2 so running Ghostty reloads in place.
@@ -27,9 +28,15 @@ NOTES=(
   "Iosevka Term: slender and narrow, more columns per pane"
   "Victor Mono: light and crisp, cursive italics"
 )
-WEIGHTS=(extralight light regular medium)
+# Lightest to heaviest, as each font ships them.
+WEIGHTS=(
+  "regular"
+  "thin extralight light regular medium semibold bold extrabold black"
+  "thin extralight light regular medium semibold bold extrabold heavy"
+  "thin extralight light regular medium semibold bold"
+)
 
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; }
 
 die() { echo "ghostty-font: $*" >&2; exit 1; }
 
@@ -44,10 +51,16 @@ index_of() {
 # Font style name as the font advertises it; empty means Ghostty's default.
 style_for() {
   case $1 in
+    thin) echo Thin ;;
     extralight) echo ExtraLight ;;
     light) echo Light ;;
     regular) echo "" ;;
     medium) echo Medium ;;
+    semibold) echo SemiBold ;;
+    bold) echo Bold ;;
+    extrabold) echo ExtraBold ;;
+    heavy) echo Heavy ;;
+    black) echo Black ;;
     *) return 1 ;;
   esac
 }
@@ -60,32 +73,43 @@ current() {
 }
 
 set_font() {
-  local name="$1" weight="${2:-regular}" i family style
+  local name="$1" weight="${2:-regular}" i family weights style bold=""
   i=$(index_of "$name") || die "unknown font '$name' (try: ${NAMES[*]})"
-  style_for "$weight" >/dev/null || die "unknown weight '$weight' (try: ${WEIGHTS[*]})"
   family=${FAMILIES[$i]}
+  weights=${WEIGHTS[$i]}
 
   if [[ -z $family && $weight != regular ]]; then
     echo "ghostty-font: the built-in font ignores weight; using regular" >&2
     weight=regular
   fi
+  [[ " $weights " == *" $weight "* ]] || die "$name has no '$weight' weight (try: $weights)"
   if [[ -n $family ]] && command -v "$GHOSTTY" >/dev/null &&
     [[ -z $("$GHOSTTY" +list-fonts --family="$family" 2>/dev/null) ]]; then
     echo "ghostty-font: $family is not installed: brew install --cask ${CASKS[$i]}" >&2
   fi
 
   style=$(style_for "$weight")
+  # Plain Bold would barely stand out from semibold-and-up text
+  case $weight in
+    semibold | bold | extrabold | heavy | black) bold=$(style_for "${weights##* }") ;;
+  esac
   {
     echo "# Written by ghostty-font (dotfiles/bin). Run it again rather than editing."
     echo "# ghostty-font: $name $weight"
     if [[ -n $family ]]; then
       echo 'font-family = ""'
       echo "font-family = \"$family\""
+      # Each font-style-* only applies with its font-family-* set alongside it
       if [[ -n $style ]]; then
-        # font-style-italic only applies with font-family-italic set alongside it
         echo "font-style = $style"
         echo "font-family-italic = \"$family\""
         echo "font-style-italic = $style Italic"
+      fi
+      if [[ -n $bold ]]; then
+        echo "font-family-bold = \"$family\""
+        echo "font-style-bold = $bold"
+        echo "font-family-bold-italic = \"$family\""
+        echo "font-style-bold-italic = $bold Italic"
       fi
     fi
   } > "$FONT_FILE"
@@ -100,21 +124,17 @@ list() {
   for i in "${!NAMES[@]}"; do
     if [[ ${cur%% *} == "${NAMES[$i]}" ]]; then w="*"; else w=" "; fi
     printf '%s %-8s %s\n' "$w" "${NAMES[$i]}" "${NOTES[$i]}"
+    if [[ -n ${FAMILIES[$i]} ]]; then printf '%11s%s\n' "" "${WEIGHTS[$i]}"; fi
   done
   echo
-  echo "Weights: ${WEIGHTS[*]}"
   echo "Current: $cur"
 }
 
-# One "<font> <weight> <note>" row per choice; the built-in font gets one row.
+# One "<font> <weight> <note>" row per font and weight it ships.
 rows() {
   local i w
   for i in "${!NAMES[@]}"; do
-    if [[ -z ${FAMILIES[$i]} ]]; then
-      printf '%-8s %-10s %s\n' "${NAMES[$i]}" regular "${NOTES[$i]}"
-      continue
-    fi
-    for w in "${WEIGHTS[@]}"; do
+    for w in ${WEIGHTS[$i]}; do
       printf '%-8s %-10s %s\n' "${NAMES[$i]}" "$w" "${NOTES[$i]}"
     done
   done
@@ -128,7 +148,7 @@ pick() {
 
   # Moving the cursor applies that row, so fzf itself redraws in the font.
   # Esc puts the original back; Enter keeps the highlighted row.
-  if choice=$(rows | fzf --layout=reverse --height=~20 --no-sort \
+  if choice=$(rows | fzf --layout=reverse --height=~40 --no-sort \
     --prompt='font> ' --header="Move to preview · Enter keeps · Esc restores $original" \
     --bind "load:pos(${pos:-1})" \
     --bind "focus:execute-silent('$0' {1} {2})"); then
