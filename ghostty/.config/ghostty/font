@@ -1,2 +1,7 @@
 # Written by ghostty-font (dotfiles/bin). Run it again rather than editing.
-# ghostty-font: default regular
+# ghostty-font: victor medium
+font-family = ""
+font-family = "VictorMono Nerd Font"
+font-style = Medium
+font-family-italic = "VictorMono Nerd Font"
+font-style-italic = Medium Italic
